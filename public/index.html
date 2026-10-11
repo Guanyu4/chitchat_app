@@ -54,15 +54,26 @@
       </div>
       <div class="sidebar-actions">
         <button id="btn-new-chat" class="icon-btn" title="Tin nhắn mới">✎</button>
+        <button id="btn-archive-view" class="icon-btn" title="Đoạn chat đã lưu trữ">🗃️</button>
+        <button id="btn-help" class="icon-btn" title="Trợ giúp">?</button>
         <button id="btn-logout" class="icon-btn" title="Đăng xuất">⏻</button>
       </div>
+    </div>
+    <div id="archived-banner" class="archived-banner hidden">
+      📦 Đoạn chat đã lưu trữ
+      <button id="btn-back-chats" class="link-btn">Quay lại</button>
     </div>
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
       <input type="text" id="search-input" placeholder="Tìm kiếm cuộc trò chuyện hoặc người dùng">
     </div>
+    <div class="sidebar-tabs" id="sidebar-tabs">
+      <button class="sidebar-tab active" data-tab="chats">Đoạn chat</button>
+      <button class="sidebar-tab" data-tab="contacts">Danh bạ</button>
+    </div>
     <div id="conv-list" class="conv-list"></div>
     <div id="user-results" class="user-results hidden"></div>
+    <div id="contacts-list-mobile" class="contacts-list contacts-list-mobile"></div>
   </aside>
 
   <!-- Khung chat -->
@@ -77,9 +88,13 @@
       <div class="chat-header">
         <button id="btn-back" class="icon-btn back-btn">←</button>
         <div class="avatar" id="chat-avatar"></div>
-        <div class="chat-peer">
+        <button class="chat-peer" id="chat-peer-btn" title="Thông tin đoạn chat">
           <div class="chat-peer-name" id="chat-name"></div>
           <div class="chat-peer-status" id="chat-status"></div>
+        </button>
+        <div class="chat-header-actions">
+          <button id="btn-voice-call" class="icon-btn" title="Gọi thoại">📞</button>
+          <button id="btn-video-call" class="icon-btn" title="Gọi video">🎥</button>
         </div>
       </div>
 
@@ -93,12 +108,111 @@
         <div id="emoji-panel" class="emoji-panel hidden"></div>
         <button id="btn-emoji" class="icon-btn" title="Emoji">😊</button>
         <button id="btn-attach" class="icon-btn" title="Gửi ảnh">🖼️</button>
+        <button id="btn-mic" class="icon-btn" title="Tin nhắn thoại">🎤</button>
         <input type="file" id="file-input" accept="image/png,image/jpeg,image/gif,image/webp" class="hidden">
         <input type="text" id="msg-input" placeholder="Nhắn tin..." autocomplete="off" maxlength="2000">
-        <button id="btn-send" class="icon-btn send-btn" title="Gửi">➤</button>
+        <button id="btn-send" class="icon-btn send-btn hidden" title="Gửi">➤</button>
+        <button id="btn-like" class="icon-btn like-btn" title="Thích">👍</button>
+      </div>
+      <div id="rec-indicator" class="rec-indicator hidden">
+        <span class="rec-dot"></span><span id="rec-time">0:00</span>
+        <span class="rec-hint">Đang ghi âm — bấm 🎤 để dừng và gửi</span>
       </div>
     </div>
   </main>
+
+  <!-- Panel thông tin đoạn chat -->
+  <aside id="info-pane" class="info-pane hidden">
+    <div class="info-header">
+      <button id="info-back" class="icon-btn back-btn">←</button>
+      <button id="info-close" class="icon-btn info-close-btn">✕</button>
+    </div>
+    <div class="info-scroll">
+      <div class="info-profile">
+        <div class="avatar avatar-xl" id="info-avatar"></div>
+        <div class="info-name" id="info-name"></div>
+        <div class="info-status" id="info-status"></div>
+      </div>
+      <div class="info-actions">
+        <button class="info-action" id="info-profile-btn"><span>👤</span>Trang cá nhân</button>
+        <button class="info-action" id="info-mute-btn"><span>🔕</span><label id="info-mute-label">Tắt thông báo</label></button>
+        <button class="info-action" id="info-search-btn"><span>🔍</span>Tìm kiếm</button>
+      </div>
+      <div id="info-search-box" class="info-search hidden">
+        <input type="text" id="info-search-input" placeholder="Tìm trong đoạn chat...">
+        <div id="info-search-results"></div>
+      </div>
+      <div class="accordion">
+        <button class="acc-head" data-acc="acc-chat-info">Thông tin về đoạn chat <span class="acc-arrow">›</span></button>
+        <div class="acc-body hidden" id="acc-chat-info"></div>
+        <button class="acc-head" data-acc="acc-custom">Tùy chỉnh đoạn chat <span class="acc-arrow">›</span></button>
+        <div class="acc-body hidden" id="acc-custom">
+          <div class="theme-label">Màu bong bóng chat</div>
+          <div class="theme-dots" id="theme-dots"></div>
+        </div>
+        <button class="acc-head" data-acc="acc-media">File phương tiện và file <span class="acc-arrow">›</span></button>
+        <div class="acc-body hidden" id="acc-media"><div id="info-media" class="media-grid"></div></div>
+        <button class="acc-head" data-acc="acc-privacy">Quyền riêng tư và hỗ trợ <span class="acc-arrow">›</span></button>
+        <div class="acc-body hidden" id="acc-privacy">
+          <button class="privacy-btn" id="info-archive-btn">📦 Lưu trữ đoạn chat</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Panel người liên hệ (desktop) -->
+  <aside id="contacts-pane" class="contacts-pane">
+    <div class="contacts-title">Người liên hệ</div>
+    <div id="contacts-list" class="contacts-list"></div>
+  </aside>
+</div>
+
+<!-- Overlay gọi thoại / video -->
+<div id="call-overlay" class="call-overlay hidden">
+  <video id="call-remote-video" class="call-remote-video" autoplay playsinline></video>
+  <div class="call-center" id="call-center">
+    <div class="avatar avatar-xl" id="call-avatar"></div>
+    <div class="call-name" id="call-name"></div>
+    <div class="call-status" id="call-status">Đang gọi...</div>
+    <div class="call-timer hidden" id="call-timer">0:00</div>
+  </div>
+  <video id="call-local-video" class="call-local-video hidden" autoplay playsinline muted></video>
+  <div class="call-controls" id="call-controls">
+    <button id="call-mic-btn" class="call-btn" title="Tắt/bật mic">🎤</button>
+    <button id="call-cam-btn" class="call-btn hidden" title="Tắt/bật camera">🎥</button>
+    <button id="call-hangup-btn" class="call-btn hangup" title="Kết thúc">📞</button>
+  </div>
+  <div class="call-incoming hidden" id="call-incoming">
+    <button id="call-accept-btn" class="call-btn accept" title="Chấp nhận">📞</button>
+    <button id="call-reject-btn" class="call-btn hangup" title="Từ chối">📞</button>
+  </div>
+</div>
+
+<!-- Modal trang cá nhân -->
+<div id="profile-modal" class="modal hidden">
+  <div class="modal-card">
+    <button class="icon-btn modal-close" data-close="profile-modal">✕</button>
+    <div class="avatar avatar-xl" id="profile-avatar" style="margin:0 auto"></div>
+    <h3 id="profile-name" style="text-align:center;margin:12px 0 4px"></h3>
+    <p id="profile-email" style="text-align:center;color:var(--text-2);font-size:14px"></p>
+    <p id="profile-status" style="text-align:center;font-size:14px;margin-top:8px"></p>
+  </div>
+</div>
+
+<!-- Modal trợ giúp -->
+<div id="help-modal" class="modal hidden">
+  <div class="modal-card">
+    <button class="icon-btn modal-close" data-close="help-modal">✕</button>
+    <h3 style="margin-bottom:12px">Trợ giúp</h3>
+    <div class="help-list">
+      <p><b>💬 Nhắn tin:</b> gõ tin nhắn rồi bấm ➤ hoặc Enter. Bấm 👍 để thả like nhanh.</p>
+      <p><b>🎤 Tin nhắn thoại:</b> bấm micro để ghi âm, bấm lại để dừng và gửi.</p>
+      <p><b>📞/🎥 Gọi điện:</b> bấm icon điện thoại trên đầu khung chat (cần cho phép micro/camera).</p>
+      <p><b>ℹ️ Thông tin đoạn chat:</b> bấm vào tên người chat để xem file đã chia sẻ, tìm tin nhắn, tắt thông báo, lưu trữ.</p>
+      <p><b>🗃️ Lưu trữ:</b> bấm icon thùng lưu trữ ở sidebar để xem lại các đoạn chat đã ẩn.</p>
+      <p><b>🔍 Tìm người mới:</b> gõ tên vào ô tìm kiếm rồi bấm vào kết quả.</p>
+    </div>
+  </div>
 </div>
 
 <!-- Lightbox xem ảnh -->

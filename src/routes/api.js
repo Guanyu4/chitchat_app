@@ -4,14 +4,19 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const {
-  searchUsers, getConversationsForUser, getOrCreatePrivateConversation,
+  searchUsers, getContacts, getConversationsForUser, getOrCreatePrivateConversation,
   createConversation, getMessages, isMember,
-  markConversationSeen,
+  markConversationSeen, setMuted, setArchived, getMedia, searchMessages,
 } = require('../db');
 const { authMiddleware, rateLimit } = require('../middleware');
 
 const router = express.Router();
 router.use(authMiddleware);
+
+// Danh bạ người liên hệ (online trước)
+router.get('/contacts', async (req, res) => {
+  res.json({ contacts: await getContacts(req.user.id) });
+});
 
 // Tìm người dùng để bắt đầu chat mới
 router.get('/users', async (req, res) => {
@@ -20,9 +25,10 @@ router.get('/users', async (req, res) => {
   res.json({ users: await searchUsers(req.user.id, q) });
 });
 
-// Danh sách cuộc trò chuyện
+// Danh sách cuộc trò chuyện (?filter=archived để xem đã lưu trữ)
 router.get('/conversations', async (req, res) => {
-  const convs = (await getConversationsForUser(req.user.id)).map((c) => ({
+  const onlyArchived = req.query.filter === 'archived';
+  const convs = (await getConversationsForUser(req.user.id, onlyArchived)).map((c) => ({
     ...c,
     displayName:
       c.type === 'private'
@@ -74,6 +80,42 @@ router.post('/conversations/:id/seen', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Tắt / bật thông báo của đoạn chat
+router.post('/conversations/:id/mute', async (req, res) => {
+  const convId = Number(req.params.id);
+  if (!(await isMember(convId, req.user.id)))
+    return res.status(403).json({ error: 'Bạn không thuộc cuộc trò chuyện này.' });
+  await setMuted(convId, req.user.id, !!req.body?.muted);
+  res.json({ ok: true, muted: !!req.body?.muted });
+});
+
+// Lưu trữ / bỏ lưu trữ đoạn chat
+router.post('/conversations/:id/archive', async (req, res) => {
+  const convId = Number(req.params.id);
+  if (!(await isMember(convId, req.user.id)))
+    return res.status(403).json({ error: 'Bạn không thuộc cuộc trò chuyện này.' });
+  await setArchived(convId, req.user.id, !!req.body?.archived);
+  res.json({ ok: true, archived: !!req.body?.archived });
+});
+
+// File phương tiện đã chia sẻ
+router.get('/conversations/:id/media', async (req, res) => {
+  const convId = Number(req.params.id);
+  if (!(await isMember(convId, req.user.id)))
+    return res.status(403).json({ error: 'Bạn không thuộc cuộc trò chuyện này.' });
+  res.json({ media: await getMedia(convId) });
+});
+
+// Tìm kiếm tin nhắn trong đoạn chat
+router.get('/conversations/:id/search', async (req, res) => {
+  const convId = Number(req.params.id);
+  const q = (req.query.q || '').trim();
+  if (!(await isMember(convId, req.user.id)))
+    return res.status(403).json({ error: 'Bạn không thuộc cuộc trò chuyện này.' });
+  if (q.length < 2) return res.json({ results: [] });
+  res.json({ results: await searchMessages(convId, q) });
+});
+
 // ---- Upload ảnh ----
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '..', '..', 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -87,19 +129,20 @@ const storage = multer.diskStorage({
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (req, file, cb) => {
     if (/^image\/(png|jpe?g|gif|webp)$/.test(file.mimetype)) cb(null, true);
-    else cb(new Error('Chỉ cho phép upload file ảnh (png, jpg, gif, webp).'));
+    else if (/^audio\/(webm|mp4|mpeg|ogg|x-m4a)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Chỉ cho phép file ảnh hoặc âm thanh.'));
   },
-}).single('image');
+}).single('file');
 
 const uploadLimiter = rateLimit({ windowMs: 60_000, max: 30 });
 
 router.post('/upload', uploadLimiter, (req, res) => {
   upload(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
-    if (!req.file) return res.status(400).json({ error: 'Chưa chọn file ảnh.' });
+    if (!req.file) return res.status(400).json({ error: 'Chưa chọn file.' });
     res.status(201).json({ url: `/uploads/${req.file.filename}` });
   });
 });

@@ -1,6 +1,7 @@
 const {
   getConversationsForUser, createMessage, isMember, memberIdsOf,
   markConversationSeen, markDelivered, setOnline, setOffline, getUserById,
+  unarchiveOnMessage,
 } = require('./db');
 const { verifySocketToken } = require('./middleware');
 
@@ -54,10 +55,12 @@ function initSocket(io) {
     }
 
     // --- gửi tin nhắn ---
+    const MSG_TYPES = ['text', 'image', 'audio', 'call'];
     socket.on('message:send', async (payload, ack) => {
       try {
-        const { conversationId, content, type = 'text', clientId } = payload || {};
+        let { conversationId, content, type = 'text', clientId } = payload || {};
         const convId = Number(conversationId);
+        if (!MSG_TYPES.includes(type)) type = 'text';
         if (!convId || !(await isMember(convId, uid)))
           return ack?.({ error: 'Cuộc trò chuyện không hợp lệ.' });
         if (!msgRateOk(uid))
@@ -68,10 +71,13 @@ function initSocket(io) {
           if (content.length > 2000)
             return ack?.({ error: 'Tin nhắn tối đa 2000 ký tự.' });
         }
-        if (type === 'image' && !content)
-          return ack?.({ error: 'Thiếu URL ảnh.' });
+        if ((type === 'image' || type === 'audio') && !content)
+          return ack?.({ error: 'Thiếu URL file.' });
+        if (type === 'call' && (!content || content.length > 500))
+          return ack?.({ error: 'Dữ liệu cuộc gọi không hợp lệ.' });
 
         const msg = await createMessage(convId, uid, content.trim?.() ?? content, type);
+        await unarchiveOnMessage(convId);
 
         // Đảm bảo mọi member đang online đều đã join room (kể cả conv mới tạo sau khi connect)
         const memberIds = await memberIdsOf(convId);
@@ -139,6 +145,42 @@ function initSocket(io) {
       const convId = Number(conversationId);
       if (convId && (await isMember(convId, uid))) socket.join(`conv:${convId}`);
     });
+
+    // --- Gọi thoại / video (WebRTC signaling, media đi P2P) ---
+    async function callTarget(conversationId) {
+      const convId = Number(conversationId);
+      if (!convId || !(await isMember(convId, uid))) return null;
+      return convId;
+    }
+    // Caller mời gọi: chuyển offer tới các thành viên khác
+    socket.on('call:invite', async ({ conversationId, callId, kind, offer }, ack) => {
+      const convId = await callTarget(conversationId);
+      if (!convId || !callId || !['audio', 'video'].includes(kind) || !offer)
+        return ack?.({ error: 'Cuộc gọi không hợp lệ.' });
+      socket.to(`conv:${convId}`).emit('call:incoming', {
+        callId, conversationId: convId, kind, offer,
+        fromUserId: uid, fromName: user.name,
+      });
+      ack?.({ ok: true });
+    });
+    // Trao đổi SDP answer / ICE candidate
+    socket.on('call:signal', async ({ conversationId, callId, signal }) => {
+      const convId = await callTarget(conversationId);
+      if (!convId || !callId || !signal) return;
+      socket.to(`conv:${convId}`).emit('call:signal', {
+        callId, conversationId: convId, signal, fromUserId: uid,
+      });
+    });
+    const relayCallEvent = (ev) => async ({ conversationId, callId, ...rest }) => {
+      const convId = await callTarget(conversationId);
+      if (!convId || !callId) return;
+      socket.to(`conv:${convId}`).emit(ev, {
+        callId, conversationId: convId, fromUserId: uid, ...rest,
+      });
+    };
+    socket.on('call:reject', relayCallEvent('call:rejected'));
+    socket.on('call:cancel', relayCallEvent('call:cancelled'));
+    socket.on('call:end', relayCallEvent('call:ended'));
 
     // --- disconnect ---
     socket.on('disconnect', async () => {

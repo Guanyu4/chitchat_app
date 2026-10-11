@@ -13,6 +13,11 @@ Web app chat real-time lấy cảm hứng từ Facebook Messenger. Chạy tốt 
 - **Đã gửi ✓ / Đã nhận ✓✓ / Đã xem ✓✓ xanh** — read receipt real-time
 - **Gửi ảnh** (tối đa 5MB) + **emoji picker**
 - **Tìm kiếm** hội thoại & tìm người dùng để bắt đầu chat mới
+- **Gọi thoại / video** 📞🎥 — WebRTC P2P, signaling qua Socket.io (STUN công cộng)
+- **Panel thông tin đoạn chat** — bấm vào tên người chat: xem file/ảnh đã chia sẻ, tìm kiếm tin nhắn, tắt/bật thông báo, đổi màu bong bóng chat, lưu trữ đoạn chat
+- **Đoạn chat đã lưu trữ** 🗃️ — ẩn khỏi danh sách chính, tự hiện lại khi có tin nhắn mới
+- **Tin nhắn thoại** 🎤 — ghi âm và gửi, nghe lại ngay trong khung chat
+- **Thả like nhanh** 👍 — bấm khi ô chat trống để gửi like cỡ lớn
 - **Responsive mobile** — sidebar ẩn khi mở chat, nút back
 - **PWA** — manifest + service worker, cài được lên home screen
 - **Bảo mật** — validate input, rate limiting chống spam, giới hạn kích thước file

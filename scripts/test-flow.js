@@ -27,6 +27,15 @@ const waitFor = (socket, ev, timeout = 5000) =>
     socket.once(ev, (data) => { clearTimeout(t); resolve(data); });
   });
 
+// Gửi tin nhắn qua socket và chờ ack trả về message
+const sendAndWait = (socket, payload) =>
+  new Promise((resolve, reject) => {
+    socket.emit('message:send', payload, (res) => {
+      if (res?.ok) resolve(res.message);
+      else reject(new Error(res?.error || 'gửi tin nhắn thất bại'));
+    });
+  });
+
 (async () => {
   const suffix = Date.now().toString(36);
   try {
@@ -76,6 +85,11 @@ const waitFor = (socket, ev, timeout = 5000) =>
     const convsA = await api('/api/conversations', a.token);
     const convAB = convsA.conversations.find((c) => c.id === conversationId);
     ok('Trạng thái online của B', convAB?.peerOnline === true, `peerOnline=${convAB?.peerOnline}`);
+
+    // 4c. Danh bạ: có B, online xếp trước
+    const { contacts } = await api('/api/contacts', a.token);
+    const contactB = contacts.find((c) => c.id === b.user.id);
+    ok('Danh sách liên hệ (thấy B đang online)', !!contactB && contactB.online_status === 1);
 
     // 5. A gửi tin nhắn → B nhận real-time
     const text = `Xin chào B! ${suffix}`;
@@ -139,6 +153,77 @@ const waitFor = (socket, ev, timeout = 5000) =>
     const msgC = await recvC;
     ok('Nhận real-time ở conv mới tạo khi đang online', ackC?.ok === true && msgC.content === 'Chào C!');
     sockC.disconnect();
+
+    // 11b. Tắt / bật thông báo
+    {
+      const r1 = await api(`/api/conversations/${conversationId}/mute`, a.token, {
+        method: 'POST', body: JSON.stringify({ muted: true }),
+      });
+      const r2 = await api(`/api/conversations/${conversationId}/mute`, a.token, {
+        method: 'POST', body: JSON.stringify({ muted: false }),
+      });
+      ok('Tắt / bật thông báo', r1.muted === true && r2.muted === false);
+    }
+
+    // 11c. Tìm kiếm tin nhắn trong đoạn chat
+    {
+      const { results } = await api(
+        `/api/conversations/${conversationId}/search?q=${encodeURIComponent('Xin chào B')}`, a.token);
+      ok('Tìm kiếm tin nhắn', results.length > 0 && results.some((r) => r.content.includes('Xin chào B')));
+    }
+
+    // 11d. File phương tiện đã chia sẻ
+    {
+      const imgMsg = await sendAndWait(sockA, {
+        conversationId, content: '/uploads/test.png', type: 'image', clientId: 't-img',
+      });
+      const { media } = await api(`/api/conversations/${conversationId}/media`, a.token);
+      ok('File phương tiện đã chia sẻ', media.some((m) => m.id === imgMsg.id && m.type === 'image'));
+    }
+
+    // 11e. Lưu trữ / bỏ lưu trữ
+    {
+      await api(`/api/conversations/${conversationId}/archive`, a.token, {
+        method: 'POST', body: JSON.stringify({ archived: true }),
+      });
+      const { conversations: arch } = await api('/api/conversations?filter=archived', a.token);
+      const { conversations: main } = await api('/api/conversations', a.token);
+      const archivedOk = arch.some((c) => c.id === conversationId) && !main.some((c) => c.id === conversationId);
+      await api(`/api/conversations/${conversationId}/archive`, a.token, {
+        method: 'POST', body: JSON.stringify({ archived: false }),
+      });
+      ok('Lưu trữ / bỏ lưu trữ', archivedOk);
+    }
+
+    // 11f. Gọi điện: signaling qua socket
+    {
+      const incomingP = waitFor(sockB, 'call:incoming');
+      sockA.emit('call:invite', {
+        conversationId, callId: 'test-call-1', kind: 'audio', offer: { type: 'offer', sdp: 'fake' },
+      }, () => {});
+      const inc = await incomingP;
+      ok('Tín hiệu gọi đến (call:incoming)',
+        inc.callId === 'test-call-1' && inc.kind === 'audio' && inc.fromUserId === a.user.id);
+
+      const sigP = waitFor(sockA, 'call:signal');
+      sockB.emit('call:signal', {
+        conversationId, callId: 'test-call-1', signal: { type: 'ice', candidate: { candidate: 'fake' } },
+      });
+      const sig = await sigP;
+      ok('Chuyển tiếp signal WebRTC', sig.signal.type === 'ice' && sig.fromUserId === b.user.id);
+
+      const rejP = waitFor(sockA, 'call:rejected');
+      sockB.emit('call:reject', { conversationId, callId: 'test-call-1' });
+      await rejP;
+      ok('Từ chối cuộc gọi (call:rejected)', true);
+
+      const callMsg = await sendAndWait(sockA, {
+        conversationId,
+        content: JSON.stringify({ kind: 'audio', duration: 65, missed: false }),
+        type: 'call', clientId: 't-call',
+      });
+      ok('Ghi log cuộc gọi', callMsg.type === 'call');
+    }
 
     // 12. Offline: B disconnect → A nhận user:offline (lọc đúng userId, bỏ qua event của C)
     const offP = new Promise((resolve, reject) => {

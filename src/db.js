@@ -60,6 +60,10 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id);
 CREATE INDEX IF NOT EXISTS idx_members_user ON conversation_members(user_id);
 `);
+  // Migration: cột muted / archived cho conversation_members (bỏ qua nếu đã có)
+  for (const col of ['muted INTEGER NOT NULL DEFAULT 0', 'archived INTEGER NOT NULL DEFAULT 0']) {
+    try { await db.execute(`ALTER TABLE conversation_members ADD COLUMN ${col}`); } catch { /* đã tồn tại */ }
+  }
   // PRAGMA journal_mode chỉ chạy ở local file; Turso cloud không cho phép PRAGMA qua remote
   if (!process.env.TURSO_DATABASE_URL) {
     try { await db.execute('PRAGMA journal_mode = WAL'); } catch {}
@@ -110,6 +114,18 @@ async function searchUsers(excludeId, query) {
   return rs.rows;
 }
 
+// Danh bạ: tất cả người dùng (trừ mình), online lên trước
+async function getContacts(excludeId) {
+  const rs = await q(
+    `SELECT id, name, avatar_url, online_status, last_seen
+     FROM users WHERE id != ?
+     ORDER BY online_status DESC, last_seen DESC
+     LIMIT 100`,
+    [excludeId]
+  );
+  return rs.rows.map((r) => ({ ...r, id: N(r.id) }));
+}
+
 // ---------- conversations ----------
 async function createConversation(type, name, memberIds) {
   const r = await q(
@@ -139,9 +155,9 @@ async function getOrCreatePrivateConversation(uidA, uidB) {
   if (found) return N(found.id);
   return createConversation('private', null, [uidA, uidB]);
 }
-async function getConversationsForUser(uid) {
+async function getConversationsForUser(uid, onlyArchived = false) {
   const rs = await q(
-    `SELECT c.id, c.type, c.name, c.created_at,
+    `SELECT c.id, c.type, c.name, c.created_at, cm.muted AS muted, cm.archived AS archived,
       (SELECT m.content FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_content,
       (SELECT m.type FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_type,
       (SELECT m.sender_id FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_sender_id,
@@ -153,9 +169,9 @@ async function getConversationsForUser(uid) {
       ) AS unread_count
     FROM conversations c
     JOIN conversation_members cm ON cm.conversation_id = c.id
-    WHERE cm.user_id = @uid
+    WHERE cm.user_id = @uid AND cm.archived = @arch
     ORDER BY COALESCE(last_at, c.created_at) DESC`,
-    { uid }
+    { uid, arch: onlyArchived ? 1 : 0 }
   );
   const out = [];
   for (const c of rs.rows) {
@@ -247,6 +263,50 @@ async function markDelivered(messageId) {
   await q(`UPDATE messages SET status = 'delivered' WHERE id = ? AND status = 'sent'`, [messageId]);
 }
 
+// Tắt / bật thông báo, lưu trữ / bỏ lưu trữ
+async function setMuted(conversationId, userId, muted) {
+  await q(
+    `UPDATE conversation_members SET muted = ? WHERE conversation_id = ? AND user_id = ?`,
+    [muted ? 1 : 0, conversationId, userId]
+  );
+}
+async function setArchived(conversationId, userId, archived) {
+  await q(
+    `UPDATE conversation_members SET archived = ? WHERE conversation_id = ? AND user_id = ?`,
+    [archived ? 1 : 0, conversationId, userId]
+  );
+}
+// Có tin nhắn mới → tự bỏ lưu trữ cho mọi thành viên
+async function unarchiveOnMessage(conversationId) {
+  await q(
+    `UPDATE conversation_members SET archived = 0 WHERE conversation_id = ? AND archived = 1`,
+    [conversationId]
+  );
+}
+
+// File phương tiện đã chia sẻ trong đoạn chat
+async function getMedia(conversationId) {
+  const rs = await q(
+    `SELECT id, type, content, created_at FROM messages
+     WHERE conversation_id = ? AND type IN ('image', 'audio')
+     ORDER BY id DESC LIMIT 60`,
+    [conversationId]
+  );
+  return rs.rows.map((m) => ({ ...m, id: N(m.id) }));
+}
+
+// Tìm kiếm tin nhắn trong đoạn chat
+async function searchMessages(conversationId, query) {
+  const rs = await q(
+    `SELECT m.id, m.content, m.type, m.created_at, u.name AS sender_name
+     FROM messages m JOIN users u ON u.id = m.sender_id
+     WHERE m.conversation_id = ? AND m.type IN ('text', 'call') AND m.content LIKE ?
+     ORDER BY m.id DESC LIMIT 20`,
+    [conversationId, `%${query}%`]
+  );
+  return rs.rows.map((m) => ({ ...m, id: N(m.id) }));
+}
+
 // ---------- jwt secret ----------
 const SECRET_FILE = path.join(DATA_DIR, '.jwt_secret');
 function getJwtSecret() {
@@ -259,7 +319,9 @@ function getJwtSecret() {
 
 module.exports = {
   createUser, getUserByEmail, getUserById, setOnline, setOffline, searchUsers,
+  getContacts,
   createConversation, getOrCreatePrivateConversation, getConversationsForUser,
   isMember, memberIdsOf, createMessage, getMessages,
   markConversationSeen, markDelivered, getJwtSecret,
+  setMuted, setArchived, unarchiveOnMessage, getMedia, searchMessages,
 };
