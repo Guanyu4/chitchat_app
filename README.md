@@ -1,0 +1,123 @@
+# 💬 ChitChat — Ứng dụng nhắn tin thời gian thực
+
+Web app chat real-time lấy cảm hứng từ Facebook Messenger. Chạy tốt trên cả desktop và mobile (responsive + PWA, có thể "Add to Home Screen").
+
+## ✨ Tính năng
+
+- **Đăng ký / đăng nhập** — email + mật khẩu, mã hoá bcrypt, JWT session (30 ngày)
+- **Danh sách hội thoại** — avatar, tên, tin nhắn cuối, thời gian, badge số tin chưa đọc
+- **Chat real-time** qua Socket.io — không cần reload trang
+- **Bong bóng chat** kiểu Messenger (xanh bên phải / xám bên trái, bo góc 18px)
+- **"Đang nhập..."** — typing indicator với hiệu ứng 3 chấm
+- **Online / offline** — chấm xanh + "Đang hoạt động" / "Hoạt động X phút trước"
+- **Đã gửi ✓ / Đã nhận ✓✓ / Đã xem ✓✓ xanh** — read receipt real-time
+- **Gửi ảnh** (tối đa 5MB) + **emoji picker**
+- **Tìm kiếm** hội thoại & tìm người dùng để bắt đầu chat mới
+- **Responsive mobile** — sidebar ẩn khi mở chat, nút back
+- **PWA** — manifest + service worker, cài được lên home screen
+- **Bảo mật** — validate input, rate limiting chống spam, giới hạn kích thước file
+
+## 🚀 Chạy nhanh
+
+```bash
+cd messenger-clone
+npm install
+npm run seed     # tạo 3 tài khoản demo
+npm start        # chạy tại http://localhost:3000
+```
+
+Tài khoản demo (mật khẩu `demo1234`):
+
+| Email | Tên |
+|---|---|
+| demo1@demo.com | An Nguyễn |
+| demo2@demo.com | Bình Trần |
+| demo3@demo.com | Chi Phạm |
+
+Mở 2 tab/browser khác nhau, đăng nhập 2 tài khoản → chat thử real-time.
+
+Chạy test tự động (cần server đang chạy):
+
+```bash
+npm test
+```
+
+## 🛠 Stack
+
+- **Backend:** Node.js + Express 5
+- **Real-time:** Socket.io 4
+- **Database:** SQLite (better-sqlite3, WAL mode) — file `data/messenger.db`
+- **Auth:** JWT + bcryptjs
+- **Upload:** multer (lưu local `uploads/`, tối đa 5MB, chỉ ảnh)
+- **Frontend:** HTML/CSS/JS thuần, mobile-first
+
+## 📁 Cấu trúc
+
+```
+messenger-clone/
+├── src/
+│   ├── server.js        # Express + Socket.io, static files, SPA fallback
+│   ├── db.js            # SQLite schema + query helpers
+│   ├── socket.js        # real-time: message, typing, online/offline, seen
+│   ├── middleware.js    # JWT auth, rate limiter
+│   └── routes/
+│       ├── auth.js      # POST /api/auth/register, /login, GET /me
+│       └── api.js       # users, conversations, messages, upload
+├── public/
+│   ├── index.html
+│   ├── css/style.css
+│   ├── js/app.js
+│   ├── manifest.json    # PWA
+│   ├── sw.js            # service worker
+│   └── icons/           # icon 192/512
+├── scripts/
+│   ├── seed.js          # tạo tài khoản demo
+│   ├── test-flow.js     # test e2e 16 case
+│   └── make-icons.js    # tạo icon PNG
+├── data/                # SQLite db + jwt secret (tự tạo)
+└── uploads/             # ảnh upload (tự tạo)
+```
+
+## 🔌 API tóm tắt
+
+| Method | Endpoint | Mô tả |
+|---|---|---|
+| POST | `/api/auth/register` | `{name, email, password}` |
+| POST | `/api/auth/login` | `{email, password}` |
+| GET | `/api/auth/me` | Thông tin user hiện tại |
+| GET | `/api/users?q=` | Tìm người dùng |
+| GET | `/api/conversations` | Danh sách hội thoại (+ unread) |
+| POST | `/api/conversations/private` | `{userId}` — lấy/tạo chat 1-1 |
+| POST | `/api/conversations/group` | `{name, memberIds}` — tạo nhóm |
+| GET | `/api/conversations/:id/messages?before=&limit=` | Lịch sử chat (phân trang) |
+| POST | `/api/upload` | Upload ảnh (multipart `image`) |
+
+Socket events: `message:send` → `message:new` · `typing:start/stop` → `typing:update` ·
+`messages:seen` → `messages:seen` · `user:online` / `user:offline`
+
+## 🌐 Deploy lên internet (cho mọi người dùng)
+
+App đang chạy trên máy bạn — tắt máy là sập. Muốn có link công khai thì deploy miễn phí lên Render:
+
+1. Tạo tài khoản [GitHub](https://github.com) (nếu chưa có) → tạo repo mới → upload toàn bộ file trong thư mục project lên (kéo-thả file zip vào cũng được, nhớ giải nén trên web)
+2. Tạo tài khoản [Render](https://render.com) (đăng nhập bằng GitHub cho nhanh)
+3. Trên Render: **New +** → **Blueprint** → chọn repo vừa tạo → **Apply**
+   (file `render.yaml` trong repo đã cấu hình sẵn: Node 24, ổ đĩa 1GB lưu database + ảnh)
+4. Đợi 3-5 phút build xong → bạn có link dạng `https://chitchat-xxxx.onrender.com` — gửi cho ai cũng dùng được, mỗi người tự đăng ký tài khoản riêng
+
+Lưu ý gói free:
+- Sau 15 phút không ai dùng, server "ngủ" — người mở đầu tiên chờ ~1 phút để nó thức dậy
+- Database và ảnh upload được lưu trên ổ đĩa riêng nên không mất khi deploy lại
+
+Biến môi trường (Render tự set qua `render.yaml`):
+- `DATA_DIR`, `UPLOAD_DIR` — chỗ lưu database và ảnh trên ổ đĩa
+- `PORT` — Render tự cấp, app đã tự đọc
+
+## 🔮 Gợi ý mở rộng
+
+- [ ] Chat nhóm (UI tạo nhóm — backend đã hỗ trợ)
+- [ ] Gọi video/voice (WebRTC)
+- [ ] Reactions (thả cảm xúc vào tin nhắn)
+- [ ] Push notification (Web Push API)
+- [ ] Dark mode
+- [ ] Chuyển SQLite → PostgreSQL khi cần scale (tách lớp `db.js`)

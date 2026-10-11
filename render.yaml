@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: chitchat
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: chitchat-data
+      mountPath: /var/chitchat-data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /var/chitchat-data/data
+      - key: UPLOAD_DIR
+        value: /var/chitchat-data/uploads
