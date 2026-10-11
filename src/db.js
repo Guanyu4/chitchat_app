@@ -17,7 +17,7 @@ const N = (v) => (typeof v === 'bigint' ? Number(v) : v);
 
 async function initSchema() {
   await db.executeMultiple(`
-CREATE TABLE IF NOT EXISTS users (`
+CREATE TABLE IF NOT EXISTS users (
 
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
