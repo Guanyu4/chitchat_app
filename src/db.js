@@ -17,7 +17,8 @@ const N = (v) => (typeof v === 'bigint' ? Number(v) : v);
 
 async function initSchema() {
   await db.executeMultiple(`
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS users (`
+
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   email TEXT NOT NULL UNIQUE,
@@ -59,10 +60,18 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id);
 CREATE INDEX IF NOT EXISTS idx_members_user ON conversation_members(user_id);
 `);
-  await db.execute('PRAGMA journal_mode = WAL');
+  // PRAGMA journal_mode chỉ chạy ở local file; Turso cloud không cho phép PRAGMA qua remote
+  if (!process.env.TURSO_DATABASE_URL) {
+    try { await db.execute('PRAGMA journal_mode = WAL'); } catch {}
+  }
 }
 
-const schemaReady = initSchema();
+const schemaReady = initSchema().catch((e) => {
+  // Ghi log nhưng không để unhandled rejection crash app;
+  // q() bên dưới sẽ throw lỗi gọn để request trả về 500 thay vì sập server
+  console.error('DB schema init failed:', e.message);
+  throw e;
+});
 
 async function q(sql, args) {
   await schemaReady;
