@@ -9,13 +9,13 @@ function signToken(user) {
   );
 }
 
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'Thiếu token xác thực' });
   try {
     const payload = jwt.verify(token, getJwtSecret());
-    const user = getUserById(payload.id);
+    const user = await getUserById(payload.id);
     if (!user) return res.status(401).json({ error: 'Tài khoản không tồn tại' });
     req.user = user;
     next();
@@ -24,9 +24,9 @@ function authMiddleware(req, res, next) {
   }
 }
 
-function verifySocketToken(token) {
+async function verifySocketToken(token) {
   const payload = jwt.verify(token, getJwtSecret());
-  const user = getUserById(payload.id);
+  const user = await getUserById(payload.id);
   if (!user) throw new Error('no user');
   return user;
 }

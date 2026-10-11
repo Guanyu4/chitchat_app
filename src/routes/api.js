@@ -5,24 +5,24 @@ const fs = require('fs');
 const crypto = require('crypto');
 const {
   searchUsers, getConversationsForUser, getOrCreatePrivateConversation,
-  createConversation, getMessages, isMember, memberIdsOf,
+  createConversation, getMessages, isMember,
   markConversationSeen,
 } = require('../db');
-const { authMiddleware, sanitizeUser, rateLimit } = require('../middleware');
+const { authMiddleware, rateLimit } = require('../middleware');
 
 const router = express.Router();
 router.use(authMiddleware);
 
 // Tìm người dùng để bắt đầu chat mới
-router.get('/users', (req, res) => {
+router.get('/users', async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 1) return res.json({ users: [] });
-  res.json({ users: searchUsers(req.user.id, q) });
+  res.json({ users: await searchUsers(req.user.id, q) });
 });
 
 // Danh sách cuộc trò chuyện
-router.get('/conversations', (req, res) => {
-  const convs = getConversationsForUser(req.user.id).map((c) => ({
+router.get('/conversations', async (req, res) => {
+  const convs = (await getConversationsForUser(req.user.id)).map((c) => ({
     ...c,
     displayName:
       c.type === 'private'
@@ -37,40 +37,40 @@ router.get('/conversations', (req, res) => {
 });
 
 // Tạo / lấy cuộc trò chuyện 1-1
-router.post('/conversations/private', (req, res) => {
+router.post('/conversations/private', async (req, res) => {
   const { userId } = req.body || {};
   if (!userId || userId === req.user.id)
     return res.status(400).json({ error: 'userId không hợp lệ.' });
-  const id = getOrCreatePrivateConversation(req.user.id, Number(userId));
+  const id = await getOrCreatePrivateConversation(req.user.id, Number(userId));
   res.status(201).json({ conversationId: id });
 });
 
 // Tạo nhóm chat
-router.post('/conversations/group', (req, res) => {
+router.post('/conversations/group', async (req, res) => {
   const { name, memberIds } = req.body || {};
   const members = [...new Set([req.user.id, ...((memberIds || []).map(Number))])];
   if (members.length < 2)
     return res.status(400).json({ error: 'Nhóm cần ít nhất 2 thành viên.' });
-  const id = createConversation('group', (name || '').trim() || 'Nhóm chat', members);
+  const id = await createConversation('group', (name || '').trim() || 'Nhóm chat', members);
   res.status(201).json({ conversationId: id });
 });
 
 // Lịch sử tin nhắn (phân trang ngược: before = message id)
-router.get('/conversations/:id/messages', (req, res) => {
+router.get('/conversations/:id/messages', async (req, res) => {
   const convId = Number(req.params.id);
-  if (!isMember(convId, req.user.id))
+  if (!(await isMember(convId, req.user.id)))
     return res.status(403).json({ error: 'Bạn không thuộc cuộc trò chuyện này.' });
   const before = req.query.before ? Number(req.query.before) : null;
   const limit = Math.min(Number(req.query.limit) || 50, 100);
-  res.json({ messages: getMessages(convId, before, limit) });
+  res.json({ messages: await getMessages(convId, before, limit) });
 });
 
 // Đánh dấu đã xem (dự phòng REST, socket cũng làm việc này)
-router.post('/conversations/:id/seen', (req, res) => {
+router.post('/conversations/:id/seen', async (req, res) => {
   const convId = Number(req.params.id);
-  if (!isMember(convId, req.user.id))
+  if (!(await isMember(convId, req.user.id)))
     return res.status(403).json({ error: 'Bạn không thuộc cuộc trò chuyện này.' });
-  markConversationSeen(convId, req.user.id);
+  await markConversationSeen(convId, req.user.id);
   res.json({ ok: true });
 });
 

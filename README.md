@@ -97,21 +97,19 @@ Socket events: `message:send` → `message:new` · `typing:start/stop` → `typi
 
 ## 🌐 Deploy lên internet (cho mọi người dùng)
 
-App đang chạy trên máy bạn — tắt máy là sập. Muốn có link công khai thì deploy miễn phí lên Render:
+Database dùng **Turso** (SQLite trên cloud, miễn phí, không giới hạn thời gian) nên chạy tốt trên gói free của Render mà không cần ổ đĩa.
 
-1. Tạo tài khoản [GitHub](https://github.com) (nếu chưa có) → tạo repo mới → upload toàn bộ file trong thư mục project lên (kéo-thả file zip vào cũng được, nhớ giải nén trên web)
-2. Tạo tài khoản [Render](https://render.com) (đăng nhập bằng GitHub cho nhanh)
-3. Trên Render: **New +** → **Blueprint** → chọn repo vừa tạo → **Apply**
-   (file `render.yaml` trong repo đã cấu hình sẵn: Node 24, ổ đĩa 1GB lưu database + ảnh)
+1. Tạo tài khoản [Turso](https://turso.tech) (đăng nhập bằng GitHub cho nhanh)
+   - Tạo database mới tên `chitchat`
+   - Tạo auth token cho database đó (mục Tokens)
+   - Copy 2 giá trị: **Database URL** (dạng `libsql://chitchat-xxx.turso.io`) và **Auth token**
+2. Trên GitHub: upload code mới nhất lên repo (kéo-thả ghi đè các file cũ là được)
+3. Trên Render: **New +** → **Blueprint** → chọn repo → khi được hỏi, điền `TURSO_DATABASE_URL` và `TURSO_AUTH_TOKEN` → **Apply**
 4. Đợi 3-5 phút build xong → bạn có link dạng `https://chitchat-xxxx.onrender.com` — gửi cho ai cũng dùng được, mỗi người tự đăng ký tài khoản riêng
 
 Lưu ý gói free:
 - Sau 15 phút không ai dùng, server "ngủ" — người mở đầu tiên chờ ~1 phút để nó thức dậy
-- Database và ảnh upload được lưu trên ổ đĩa riêng nên không mất khi deploy lại
-
-Biến môi trường (Render tự set qua `render.yaml`):
-- `DATA_DIR`, `UPLOAD_DIR` — chỗ lưu database và ảnh trên ổ đĩa
-- `PORT` — Render tự cấp, app đã tự đọc
+- Tin nhắn và tài khoản lưu trên Turso nên không bao giờ mất. Riêng ảnh upload lưu tạm trên server, có thể mất khi server khởi động lại (giới hạn của gói free — nâng cấp sau nếu cần)
 
 ## 🔮 Gợi ý mở rộng
 
