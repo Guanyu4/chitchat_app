@@ -45,15 +45,26 @@ function initials(name) {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
-function avatarHTML(name, sizeClass = '', online = false) {
-  return `<div class="avatar ${sizeClass}" style="background:${avatarColor(name)}">${esc(initials(name))}` +
+function avatarHTML(name, sizeClass = '', online = false, avatarUrl = null) {
+  const style = avatarUrl
+    ? `background-image:url("${avatarUrl}");background-size:cover;background-position:center;`
+    : `background:${avatarColor(name)};`;
+  const inner = avatarUrl ? '' : esc(initials(name));
+  return `<div class="avatar ${sizeClass}" style="${style}">${inner}` +
     (online ? '<span class="online-dot"></span>' : '') + `</div>`;
 }
-function setAvatar(el, name, online) {
-  el.innerHTML = avatarHTML(name, '', online);
-  el.style.background = avatarColor(name);
-  el.textContent = '';
-  el.insertAdjacentHTML('afterbegin', esc(initials(name)));
+function setAvatar(el, name, online, avatarUrl = null) {
+  el.innerHTML = '';
+  if (avatarUrl) {
+    el.style.backgroundImage = `url("${avatarUrl}")`;
+    el.style.backgroundSize = 'cover';
+    el.style.backgroundPosition = 'center';
+    el.style.backgroundColor = 'transparent';
+  } else {
+    el.style.backgroundImage = '';
+    el.style.background = avatarColor(name);
+    el.textContent = initials(name);
+  }
   if (online) el.insertAdjacentHTML('beforeend', '<span class="online-dot"></span>');
 }
 
@@ -167,7 +178,7 @@ $('#btn-logout').onclick = logout;
 async function enterApp() {
   $('#auth-view').classList.add('hidden');
   $('#app-view').classList.remove('hidden');
-  setAvatar($('#me-avatar'), state.user.name, false);
+  setAvatar($('#me-avatar'), state.user.name, false, state.user.avatar_url);
   $('#me-name').textContent = state.user.name;
   await loadConversations();
   await loadContacts();
@@ -212,7 +223,7 @@ function renderContacts() {
   const html = state.contacts.length ? state.contacts.map((c) => {
     const online = !!c.online_status;
     return `<div class="contact-item" data-uid="${c.id}">
-      ${avatarHTML(c.name, 'avatar-sm', online)}
+      ${avatarHTML(c.name, 'avatar-sm', online, c.avatar_url)}
       <div class="contact-main">
         <div class="contact-name">${esc(c.name)}</div>
         ${online ? '' : `<div class="contact-sub">${fmtContactSeen(c.last_seen)}</div>`}
@@ -256,6 +267,62 @@ function applyTheme(convId) {
   document.documentElement.style.setProperty('--bubble-me', c);
 }
 
+/* ---------- Hình nền đoạn chat ---------- */
+function applyWallpaper(conv) {
+  const box = $('#messages');
+  const wp = conv?.wallpaper || null;
+  if (wp) {
+    box.classList.add('has-wallpaper');
+    box.style.backgroundImage = `url("${wp}")`;
+  } else {
+    box.classList.remove('has-wallpaper');
+    box.style.backgroundImage = '';
+  }
+  const prev = $('#wallpaper-preview');
+  if (prev) prev.style.backgroundImage = wp ? `url("${wp}")` : '';
+  $('#btn-wallpaper-remove')?.classList.toggle('hidden', !wp);
+}
+
+$('#btn-wallpaper').onclick = () => $('#wallpaper-input').click();
+$('#wallpaper-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  const conv = getActiveConv();
+  if (!file || !conv) return;
+  if (!file.type.startsWith('image/')) return toast('Hình nền phải là file ảnh.');
+  if (file.size > 10 * 1024 * 1024) return toast('Ảnh tối đa 10MB.');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    toast('Đang tải hình nền lên...');
+    const up = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${state.token}` },
+      body: fd,
+    });
+    const upData = await up.json();
+    if (!up.ok) throw new Error(upData.error || 'Upload thất bại');
+    await api(`/api/conversations/${conv.id}/wallpaper`, {
+      method: 'POST', body: JSON.stringify({ wallpaper: upData.url }),
+    });
+    conv.wallpaper = upData.url;
+    applyWallpaper(conv);
+    toast('Đã đổi hình nền! 🎨');
+  } catch (err) { toast(err.message); }
+});
+$('#btn-wallpaper-remove').onclick = async () => {
+  const conv = getActiveConv();
+  if (!conv) return;
+  try {
+    await api(`/api/conversations/${conv.id}/wallpaper`, {
+      method: 'POST', body: JSON.stringify({ wallpaper: null }),
+    });
+    conv.wallpaper = null;
+    applyWallpaper(conv);
+    toast('Đã xóa hình nền.');
+  } catch (err) { toast(err.message); }
+};
+
 function getActiveConv() {
   return state.conversations.find((c) => c.id === state.activeConvId);
 }
@@ -264,7 +331,8 @@ function openInfoPane() {
   const conv = getActiveConv();
   if (!conv) return;
   $('#info-name').textContent = conv.name;
-  setAvatar($('#info-avatar'), conv.name, conv.online);
+  setAvatar($('#info-avatar'), conv.name, conv.online,
+    conv.type === 'private' ? conv.peer?.avatar_url || null : null);
   const st = $('#info-status');
   if (conv.type === 'private') {
     if (conv.online) { st.textContent = 'Đang hoạt động'; st.classList.add('online'); }
@@ -282,6 +350,7 @@ function openInfoPane() {
   $('#info-search-results').innerHTML = '';
   renderInfoMembers(conv);
   renderThemeDots(conv.id);
+  applyWallpaper(conv);
   loadInfoMedia(conv.id);
   $('#info-pane').classList.remove('hidden');
 }
@@ -302,10 +371,10 @@ function renderInfoMembers(conv) {
   const box = $('#acc-chat-info');
   if (conv.type === 'group' && conv.members?.length) {
     box.innerHTML = conv.members.map((m) =>
-      `<div class="acc-member">${avatarHTML(m.name, 'avatar-sm', !!m.online_status)}<span>${esc(m.name)}</span></div>`
+      `<div class="acc-member">${avatarHTML(m.name, 'avatar-sm', !!m.online_status, m.avatar_url)}<span>${esc(m.name)}</span></div>`
     ).join('');
   } else if (conv.type === 'private' && conv.peer) {
-    box.innerHTML = `<div class="acc-member">${avatarHTML(conv.peer.name, 'avatar-sm', !!conv.peer.online_status)}<span>${esc(conv.peer.name)}</span></div>
+    box.innerHTML = `<div class="acc-member">${avatarHTML(conv.peer.name, 'avatar-sm', !!conv.peer.online_status, conv.peer.avatar_url)}<span>${esc(conv.peer.name)}</span></div>
       <p style="margin-top:8px">Đoạn chat 1-1 giữa bạn và ${esc(conv.peer.name)}.</p>`;
   } else {
     box.innerHTML = '<p>Không có thông tin thêm.</p>';
@@ -416,7 +485,7 @@ $('#info-profile-btn').onclick = () => {
   if (!conv || conv.type !== 'private' || !conv.peer) return toast('Chỉ xem được trang cá nhân của chat 1-1.');
   $('#profile-name').textContent = conv.peer.name;
   $('#profile-email').textContent = conv.peer.email || '';
-  setAvatar($('#profile-avatar'), conv.peer.name, !!conv.peer.online_status);
+  setAvatar($('#profile-avatar'), conv.peer.name, !!conv.peer.online_status, conv.peer.avatar_url);
   $('#profile-status').textContent = conv.peer.online_status ? '🟢 Đang hoạt động'
     : (conv.peer.last_seen ? 'Hoạt động ' + fmtLastSeen(conv.peer.last_seen) : '');
   $('#profile-modal').classList.remove('hidden');
@@ -449,7 +518,7 @@ function updateContactStatus(userId, online, lastSeen) {
 /* ---------- Gọi thoại / video (WebRTC P2P, signaling qua Socket.io) ---------- */
 const callState = {
   pc: null, stream: null, callId: null, kind: null, conversationId: null,
-  peerName: '', isCaller: false, pendingOffer: null,
+  peerName: '', peerAvatar: null, isCaller: false, pendingOffer: null,
   startTime: 0, timerInt: null, logSent: false, micOn: true, camOn: true,
 };
 const RTC_CONF = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
@@ -457,7 +526,7 @@ const RTC_CONF = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 function showCallUI(mode) {
   $('#call-overlay').classList.remove('hidden');
   $('#call-name').textContent = callState.peerName;
-  setAvatar($('#call-avatar'), callState.peerName, false);
+  setAvatar($('#call-avatar'), callState.peerName, false, callState.peerAvatar);
   const incoming = mode === 'incoming';
   $('#call-incoming').classList.toggle('hidden', !incoming);
   $('#call-controls').classList.toggle('hidden', incoming);
@@ -551,7 +620,8 @@ async function startCall(kind) {
     await pc.setLocalDescription(offer);
     Object.assign(callState, {
       pc, stream, callId, kind, conversationId,
-      peerName: conv.name, isCaller: true, logSent: false,
+      peerName: conv.name, peerAvatar: conv.peer?.avatar_url || null,
+      isCaller: true, logSent: false,
     });
     state.socket.emit('call:invite', { conversationId, callId, kind, offer }, (res) => {
       if (res?.error) { toast(res.error); endCall(false, true); }
@@ -645,6 +715,32 @@ $('#call-cam-btn').onclick = () => {
   $('#call-cam-btn').classList.toggle('off', !callState.camOn);
 };
 
+/* ---------- Đổi avatar ---------- */
+$('#me-avatar').onclick = () => $('#avatar-input').click();
+$('#avatar-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (!file.type.startsWith('image/')) return toast('Avatar phải là file ảnh.');
+  if (file.size > 10 * 1024 * 1024) return toast('Ảnh tối đa 10MB.');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    toast('Đang tải avatar lên...');
+    const res = await fetch('/api/users/me/avatar', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${state.token}` },
+      body: fd,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Đổi avatar thất bại');
+    state.user.avatar_url = data.user.avatar_url;
+    localStorage.setItem('chitchat_user', JSON.stringify(state.user));
+    setAvatar($('#me-avatar'), state.user.name, false, state.user.avatar_url);
+    toast('Đã đổi avatar! 🎉');
+  } catch (err) { toast(err.message); }
+});
+
 /* ---------- Sidebar: danh sách hội thoại ---------- */
 function convPeer(conv) {
   return conv.type === 'private' ? conv.peer : null;
@@ -671,7 +767,7 @@ function renderConvList(filter = '') {
     const prefix = c.last_sender_id === state.user.id ? 'Bạn: ' : '';
     const online = c.type === 'private' && peer?.online_status;
     return `<div class="conv-item ${c.id === state.activeConvId ? 'active' : ''}" data-id="${c.id}">
-      ${avatarHTML(c.displayName, '', online)}
+      ${avatarHTML(c.displayName, '', online, c.displayAvatar)}
       <div class="conv-main">
         <div class="conv-top">
           <div class="conv-name">${esc(c.displayName)}</div>
@@ -706,7 +802,7 @@ async function searchUsers(q) {
     box.classList.remove('hidden');
     box.innerHTML = `<div class="section-title">Mọi người</div>` + users.map((u) => `
       <div class="conv-item" data-uid="${u.id}">
-        ${avatarHTML(u.name, 'avatar-sm', !!u.online_status)}
+        ${avatarHTML(u.name, 'avatar-sm', !!u.online_status, u.avatar_url)}
         <div class="conv-main">
           <div class="conv-name">${esc(u.name)}</div>
           <div class="conv-preview">${esc(u.email)}</div>
@@ -752,12 +848,13 @@ async function openConversation(id) {
   renderConvList($('#search-input').value);
   const conv = getConv(id);
   if (!conv) return;
+  applyWallpaper(conv);
 
   $('#chat-empty').classList.add('hidden');
   $('#chat-active').classList.remove('hidden');
   document.body.classList.add('chat-open');
 
-  setAvatar($('#chat-avatar'), conv.displayName, conv.type === 'private' && conv.peer?.online_status);
+  setAvatar($('#chat-avatar'), conv.displayName, conv.type === 'private' && conv.peer?.online_status, conv.displayAvatar);
   $('#chat-name').textContent = conv.displayName;
   updatePeerStatus(conv);
 
@@ -824,7 +921,7 @@ function msgRowHTML(msg, prevMsg) {
   const showAvatar = !mine && !grouped;
   const avatarPart = mine ? '' :
     (showAvatar
-      ? avatarHTML(msg.sender_name || '?', 'avatar-xs')
+      ? avatarHTML(msg.sender_name || '?', 'avatar-xs', false, msg.sender_avatar)
       : '<div class="msg-avatar-spacer"></div>');
   return `<div class="msg-row ${mine ? 'me' : 'them'} ${grouped ? 'grouped' : ''}"
       data-id="${msg.id}" ${msg.clientId ? `data-client="${msg.clientId}"` : ''}>
@@ -1240,15 +1337,38 @@ function connectSocket() {
     updateContactStatus(userId, false, lastSeen);
   });
 
+  // Ai đó đổi avatar → cập nhật khắp nơi, real-time
+  socket.on('user:avatar', ({ userId, avatarUrl }) => {
+    let changed = false;
+    for (const c of state.conversations) {
+      if (c.type === 'private' && c.peer?.id === userId) {
+        c.peer.avatar_url = avatarUrl;
+        c.displayAvatar = avatarUrl;
+        changed = true;
+      }
+    }
+    for (const ct of state.contacts) {
+      if (ct.id === userId) { ct.avatar_url = avatarUrl; changed = true; }
+    }
+    if (changed) {
+      renderConvList($('#search-input').value);
+      renderContacts();
+    }
+    const conv = getActiveConv();
+    if (conv?.type === 'private' && conv.peer?.id === userId) {
+      setAvatar($('#chat-avatar'), conv.displayName, !!conv.peer.online_status, avatarUrl);
+    }
+  });
+
   // --- Cuộc gọi đến / tín hiệu WebRTC ---
-  socket.on('call:incoming', ({ callId, conversationId, kind, offer, fromUserId, fromName }) => {
+  socket.on('call:incoming', ({ callId, conversationId, kind, offer, fromUserId, fromName, fromAvatar }) => {
     if (callState.pc || callState.pendingOffer) {
       socket.emit('call:reject', { conversationId, callId, busy: true });
       return;
     }
     Object.assign(callState, {
       callId, kind, conversationId, pendingOffer: offer,
-      peerName: fromName, isCaller: false, logSent: false,
+      peerName: fromName, peerAvatar: fromAvatar || null, isCaller: false, logSent: false,
     });
     showCallUI('incoming');
     playRingtone();

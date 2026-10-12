@@ -60,8 +60,8 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id);
 CREATE INDEX IF NOT EXISTS idx_members_user ON conversation_members(user_id);
 `);
-  // Migration: cột muted / archived cho conversation_members (bỏ qua nếu đã có)
-  for (const col of ['muted INTEGER NOT NULL DEFAULT 0', 'archived INTEGER NOT NULL DEFAULT 0']) {
+  // Migration: cột muted / archived / wallpaper cho conversation_members (bỏ qua nếu đã có)
+  for (const col of ['muted INTEGER NOT NULL DEFAULT 0', 'archived INTEGER NOT NULL DEFAULT 0', 'wallpaper TEXT']) {
     try { await db.execute(`ALTER TABLE conversation_members ADD COLUMN ${col}`); } catch { /* đã tồn tại */ }
   }
   // PRAGMA journal_mode chỉ chạy ở local file; Turso cloud không cho phép PRAGMA qua remote
@@ -100,6 +100,13 @@ async function getUserById(id) {
 }
 async function setOnline(id) {
   await q(`UPDATE users SET online_status = 1 WHERE id = ?`, [id]);
+}
+
+// Đổi avatar
+async function updateAvatar(userId, avatarUrl) {
+  await q(`UPDATE users SET avatar_url = ? WHERE id = ?`, [avatarUrl, userId]);
+  const u = await getUserById(userId);
+  return { id: N(u.id), name: u.name, email: u.email, avatar_url: u.avatar_url };
 }
 async function setOffline(id) {
   await q(`UPDATE users SET online_status = 0, last_seen = ? WHERE id = ?`, [Date.now(), id]);
@@ -158,6 +165,7 @@ async function getOrCreatePrivateConversation(uidA, uidB) {
 async function getConversationsForUser(uid, onlyArchived = false) {
   const rs = await q(
     `SELECT c.id, c.type, c.name, c.created_at, cm.muted AS muted, cm.archived AS archived,
+      cm.wallpaper AS wallpaper,
       (SELECT m.content FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_content,
       (SELECT m.type FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_type,
       (SELECT m.sender_id FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_sender_id,
@@ -284,6 +292,14 @@ async function unarchiveOnMessage(conversationId) {
   );
 }
 
+// Hình nền đoạn chat (riêng từng người)
+async function setWallpaper(conversationId, userId, wallpaper) {
+  await q(
+    `UPDATE conversation_members SET wallpaper = ? WHERE conversation_id = ? AND user_id = ?`,
+    [wallpaper || null, conversationId, userId]
+  );
+}
+
 // File phương tiện đã chia sẻ trong đoạn chat
 async function getMedia(conversationId) {
   const rs = await q(
@@ -319,9 +335,10 @@ function getJwtSecret() {
 
 module.exports = {
   createUser, getUserByEmail, getUserById, setOnline, setOffline, searchUsers,
-  getContacts,
+  getContacts, updateAvatar,
   createConversation, getOrCreatePrivateConversation, getConversationsForUser,
   isMember, memberIdsOf, createMessage, getMessages,
   markConversationSeen, markDelivered, getJwtSecret,
   setMuted, setArchived, unarchiveOnMessage, getMedia, searchMessages,
+  setWallpaper,
 };

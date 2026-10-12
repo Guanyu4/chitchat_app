@@ -225,6 +225,41 @@ const sendAndWait = (socket, payload) =>
       ok('Ghi log cuộc gọi', callMsg.type === 'call');
     }
 
+    // 11g. Đổi avatar (+ real-time cho người khác)
+    {
+      const png = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        'base64'
+      );
+      const avP = waitFor(sockB, 'user:avatar');
+      const fd = new FormData();
+      fd.append('file', new Blob([png], { type: 'image/png' }), 'avatar.png');
+      const res = await fetch(BASE + '/api/users/me/avatar', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${a.token}` },
+        body: fd,
+      });
+      const data = await res.json();
+      const av = await avP;
+      ok('Đổi avatar', res.ok && data.user.avatar_url?.startsWith('/uploads/'));
+      ok('Real-time cập nhật avatar',
+        av.userId === a.user.id && av.avatarUrl === data.user.avatar_url);
+    }
+
+    // 11h. Hình nền đoạn chat
+    {
+      const r = await api(`/api/conversations/${conversationId}/wallpaper`, a.token, {
+        method: 'POST', body: JSON.stringify({ wallpaper: '/uploads/bg.png' }),
+      });
+      const { conversations } = await api('/api/conversations', a.token);
+      const c = conversations.find((x) => x.id === conversationId);
+      ok('Đổi / xóa hình nền đoạn chat',
+        r.wallpaper === '/uploads/bg.png' && c.wallpaper === '/uploads/bg.png');
+      await api(`/api/conversations/${conversationId}/wallpaper`, a.token, {
+        method: 'POST', body: JSON.stringify({ wallpaper: null }),
+      });
+    }
+
     // 12. Offline: B disconnect → A nhận user:offline (lọc đúng userId, bỏ qua event của C)
     const offP = new Promise((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('timeout chờ user:offline')), 8000);

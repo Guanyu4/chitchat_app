@@ -157,9 +157,10 @@ function initSocket(io) {
       const convId = await callTarget(conversationId);
       if (!convId || !callId || !['audio', 'video'].includes(kind) || !offer)
         return ack?.({ error: 'Cuộc gọi không hợp lệ.' });
+      const me = await getUserById(uid);
       socket.to(`conv:${convId}`).emit('call:incoming', {
         callId, conversationId: convId, kind, offer,
-        fromUserId: uid, fromName: user.name,
+        fromUserId: uid, fromName: user.name, fromAvatar: me?.avatar_url || null,
       });
       ack?.({ ok: true });
     });

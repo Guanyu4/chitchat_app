@@ -25,6 +25,7 @@ app.use((req, res) => {
 });
 
 initSocket(io);
+app.set('io', io); // để các route có thể emit event real-time
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

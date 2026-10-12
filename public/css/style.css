@@ -302,6 +302,13 @@ body {
   body[data-side-tab="contacts"] .contacts-list-mobile { display: block; }
 }
 
+.me-avatar { cursor: pointer; position: relative; }
+.me-avatar:hover::after {
+  content: '✎'; position: absolute; inset: 0; border-radius: 50%;
+  background: rgba(0,0,0,.45); color: #fff; font-size: 18px;
+  display: flex; align-items: center; justify-content: center;
+}
+
 /* ---------- Chat header actions ---------- */
 .chat-peer {
   flex: 1; min-width: 0; background: none; border: none; cursor: pointer;
@@ -366,6 +373,24 @@ body {
 }
 .media-audio { margin-top: 8px; }
 .media-audio audio { width: 100%; }
+/* ---------- Hình nền đoạn chat ---------- */
+.wallpaper-row { display: flex; gap: 12px; align-items: center; }
+.wallpaper-preview {
+  width: 76px; height: 76px; border-radius: 12px; flex-shrink: 0;
+  background: #eee center / cover; border: 1px solid var(--border);
+}
+.wallpaper-btns { flex: 1; }
+.messages { position: relative; }
+.messages.has-wallpaper { background-size: cover; background-position: center; }
+.messages.has-wallpaper::before {
+  content: ''; position: absolute; inset: 0;
+  background: rgba(0,0,0,.55); pointer-events: none;
+}
+.messages.has-wallpaper > * { position: relative; z-index: 1; }
+.messages.has-wallpaper .date-divider { color: #E4E6EB; }
+.messages.has-wallpaper .msg-row:not(.me) .bubble {
+  background: rgba(48,49,52,.92); color: #E4E6EB;
+}
 .privacy-btn {
   width: 100%; border: 1px solid var(--border); background: #fff; border-radius: 10px;
   padding: 10px; font-size: 14px; cursor: pointer; margin-bottom: 8px;

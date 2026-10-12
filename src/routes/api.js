@@ -4,9 +4,9 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const {
-  searchUsers, getContacts, getConversationsForUser, getOrCreatePrivateConversation,
+  searchUsers, getContacts, getUserById, updateAvatar, getConversationsForUser, getOrCreatePrivateConversation,
   createConversation, getMessages, isMember,
-  markConversationSeen, setMuted, setArchived, getMedia, searchMessages,
+  markConversationSeen, setMuted, setArchived, getMedia, searchMessages, setWallpaper,
 } = require('../db');
 const { authMiddleware, rateLimit } = require('../middleware');
 
@@ -98,6 +98,18 @@ router.post('/conversations/:id/archive', async (req, res) => {
   res.json({ ok: true, archived: !!req.body?.archived });
 });
 
+// Đổi / xóa hình nền đoạn chat (riêng cho mình)
+router.post('/conversations/:id/wallpaper', async (req, res) => {
+  const convId = Number(req.params.id);
+  if (!(await isMember(convId, req.user.id)))
+    return res.status(403).json({ error: 'Bạn không thuộc cuộc trò chuyện này.' });
+  const wallpaper = (req.body?.wallpaper || '').trim() || null;
+  if (wallpaper && !wallpaper.startsWith('/uploads/'))
+    return res.status(400).json({ error: 'Hình nền không hợp lệ.' });
+  await setWallpaper(convId, req.user.id, wallpaper);
+  res.json({ ok: true, wallpaper });
+});
+
 // File phương tiện đã chia sẻ
 router.get('/conversations/:id/media', async (req, res) => {
   const convId = Number(req.params.id);
@@ -138,6 +150,30 @@ const upload = multer({
 }).single('file');
 
 const uploadLimiter = rateLimit({ windowMs: 60_000, max: 30 });
+
+// Đổi avatar của chính mình (multipart field "file")
+router.post('/users/me/avatar', (req, res) => {
+  upload(req, res, async (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    if (!req.file) return res.status(400).json({ error: 'Chưa chọn file ảnh.' });
+    if (!req.file.mimetype.startsWith('image/'))
+      return res.status(400).json({ error: 'Avatar phải là file ảnh.' });
+    try {
+      const url = `/uploads/${req.file.filename}`;
+      // Xoá avatar cũ nếu là file upload local
+      const me = await getUserById(req.user.id);
+      if (me?.avatar_url?.startsWith('/uploads/')) {
+        fs.unlink(path.join(UPLOAD_DIR, path.basename(me.avatar_url)), () => {});
+      }
+      const user = await updateAvatar(req.user.id, url);
+      // Báo real-time cho mọi client đang online
+      req.app.get('io')?.emit('user:avatar', { userId: user.id, avatarUrl: url });
+      res.json({ user });
+    } catch (e) {
+      res.status(500).json({ error: 'Đổi avatar thất bại.' });
+    }
+  });
+});
 
 router.post('/upload', uploadLimiter, (req, res) => {
   upload(req, res, (err) => {

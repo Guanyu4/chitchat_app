@@ -46,7 +46,8 @@
   <aside id="sidebar" class="sidebar">
     <div class="sidebar-header">
       <div class="me" id="me-block">
-        <div class="avatar" id="me-avatar"></div>
+        <div class="avatar me-avatar" id="me-avatar" title="Đổi avatar"></div>
+        <input type="file" id="avatar-input" accept="image/png,image/jpeg,image/gif,image/webp" class="hidden">
         <div class="me-info">
           <div class="me-name" id="me-name"></div>
           <div class="me-status">Đang hoạt động</div>
@@ -149,6 +150,15 @@
         <div class="acc-body hidden" id="acc-custom">
           <div class="theme-label">Màu bong bóng chat</div>
           <div class="theme-dots" id="theme-dots"></div>
+          <div class="theme-label" style="margin-top:14px">Hình nền đoạn chat</div>
+          <div class="wallpaper-row">
+            <div id="wallpaper-preview" class="wallpaper-preview"></div>
+            <div class="wallpaper-btns">
+              <button class="privacy-btn" id="btn-wallpaper" style="margin-bottom:6px">🖼️ Chọn ảnh nền</button>
+              <button class="privacy-btn hidden" id="btn-wallpaper-remove">🗑️ Xóa hình nền</button>
+            </div>
+          </div>
+          <input type="file" id="wallpaper-input" accept="image/png,image/jpeg,image/gif,image/webp" class="hidden">
         </div>
         <button class="acc-head" data-acc="acc-media">File phương tiện và file <span class="acc-arrow">›</span></button>
         <div class="acc-body hidden" id="acc-media"><div id="info-media" class="media-grid"></div></div>
