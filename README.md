@@ -22,6 +22,7 @@ Web app chat real-time lấy cảm hứng từ Facebook Messenger. Chạy tốt 
 - **Hình nền đoạn chat** 🎨 — bấm vào tên người chat → Tùy chỉnh đoạn chat → chọn ảnh nền riêng cho mình (tự động làm tối để dễ đọc chữ)
 - **Chế độ tối** 🌙 — nút mặt trăng ở sidebar để chuyển dark/light theme, tự nhớ lựa chọn
 - **Tự cập nhật bản mới** — không còn phải Ctrl+Shift+R: mở web là luôn thấy bản mới nhất (service worker network-first)
+- **Giao diện hiện đại** — design system mới: màu gradient, bo góc lớn, bóng đổ mềm, animation mượt, dark mode hoàn chỉnh
 - **Responsive mobile** — sidebar ẩn khi mở chat, nút back
 - **PWA** — manifest + service worker, cài được lên home screen
 - **Bảo mật** — validate input, rate limiting chống spam, giới hạn kích thước file
