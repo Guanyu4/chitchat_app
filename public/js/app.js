@@ -741,6 +741,24 @@ $('#avatar-input').addEventListener('change', async (e) => {
   } catch (err) { toast(err.message); }
 });
 
+/* ---------- Dark mode ---------- */
+function setThemeMode(dark) {
+  document.documentElement.classList.toggle('dark', dark);
+  try { localStorage.setItem('chitchat_dark', dark ? '1' : '0'); } catch (e) {}
+  const btn = $('#btn-theme');
+  if (btn) btn.textContent = dark ? '☀️' : '🌙';
+}
+function initThemeMode() {
+  let dark = false;
+  try { dark = localStorage.getItem('chitchat_dark') === '1'; } catch (e) {}
+  setThemeMode(dark);
+  $('#btn-theme').onclick = () => {
+    const nowDark = !document.documentElement.classList.contains('dark');
+    setThemeMode(nowDark);
+    toast(nowDark ? 'Đã bật chế độ tối 🌙' : 'Đã bật chế độ sáng ☀️');
+  };
+}
+
 /* ---------- Sidebar: danh sách hội thoại ---------- */
 function convPeer(conv) {
   return conv.type === 'private' ? conv.peer : null;
@@ -1429,6 +1447,7 @@ function connectSocket() {
 
 /* ---------- Khởi động ---------- */
 (async function boot() {
+  initThemeMode();
   if (state.token && state.user) {
     try {
       const { user } = await api('/api/auth/me');

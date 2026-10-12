@@ -20,6 +20,7 @@ Web app chat real-time lấy cảm hứng từ Facebook Messenger. Chạy tốt 
 - **Thả like nhanh** 👍 — bấm khi ô chat trống để gửi like cỡ lớn
 - **Đổi avatar** — bấm vào avatar của mình ở sidebar để tải ảnh mới, bạn bè thấy cập nhật ngay lập tức (real-time)
 - **Hình nền đoạn chat** 🎨 — bấm vào tên người chat → Tùy chỉnh đoạn chat → chọn ảnh nền riêng cho mình (tự động làm tối để dễ đọc chữ)
+- **Chế độ tối** 🌙 — nút mặt trăng ở sidebar để chuyển dark/light theme, tự nhớ lựa chọn
 - **Responsive mobile** — sidebar ẩn khi mở chat, nút back
 - **PWA** — manifest + service worker, cài được lên home screen
 - **Bảo mật** — validate input, rate limiting chống spam, giới hạn kích thước file

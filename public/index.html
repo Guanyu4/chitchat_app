@@ -10,6 +10,10 @@
 <link rel="icon" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <link rel="stylesheet" href="/css/style.css">
+<script>
+  // Áp dụng dark mode sớm để tránh nháy khi tải trang
+  try { if (localStorage.getItem('chitchat_dark') === '1') document.documentElement.classList.add('dark'); } catch (e) {}
+</script>
 </head>
 <body>
 
@@ -56,6 +60,7 @@
       <div class="sidebar-actions">
         <button id="btn-new-chat" class="icon-btn" title="Tin nhắn mới">✎</button>
         <button id="btn-archive-view" class="icon-btn" title="Đoạn chat đã lưu trữ">🗃️</button>
+        <button id="btn-theme" class="icon-btn" title="Chế độ tối/sáng">🌙</button>
         <button id="btn-help" class="icon-btn" title="Trợ giúp">?</button>
         <button id="btn-logout" class="icon-btn" title="Đăng xuất">⏻</button>
       </div>
