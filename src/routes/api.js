@@ -57,7 +57,8 @@ router.post('/conversations/group', async (req, res) => {
   const members = [...new Set([req.user.id, ...((memberIds || []).map(Number))])];
   if (members.length < 2)
     return res.status(400).json({ error: 'Nhóm cần ít nhất 2 thành viên.' });
-  const id = await createConversation('group', (name || '').trim() || 'Nhóm chat', members);
+  const groupName = (name || '').trim().slice(0, 50) || 'Nhóm chat';
+  const id = await createConversation('group', groupName, members);
   res.status(201).json({ conversationId: id });
 });
 

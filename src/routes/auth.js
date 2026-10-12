@@ -20,8 +20,12 @@ router.post('/register', authLimiter, async (req, res) => {
     return res.status(400).json({ error: 'Email không hợp lệ.' });
   if (password.length < 6)
     return res.status(400).json({ error: 'Mật khẩu phải có ít nhất 6 ký tự.' });
+  if (password.length > 72)
+    return res.status(400).json({ error: 'Mật khẩu tối đa 72 ký tự.' });
   if (name.trim().length < 2)
     return res.status(400).json({ error: 'Họ tên quá ngắn.' });
+  if (name.trim().length > 50 || email.length > 100)
+    return res.status(400).json({ error: 'Họ tên hoặc email quá dài.' });
   if (await getUserByEmail(email))
     return res.status(409).json({ error: 'Email này đã được đăng ký.' });
 

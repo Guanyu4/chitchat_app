@@ -240,23 +240,5 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/app.js"></script>
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then((reg) => {
-      // Có bản mới → tự tải lại để luôn dùng bản mới nhất
-      reg.addEventListener('updatefound', () => {
-        const nw = reg.installing;
-        if (!nw) return;
-        nw.addEventListener('statechange', () => {
-          if (nw.state === 'activated' && navigator.serviceWorker.controller) {
-            window.location.reload();
-          }
-        });
-      });
-    }).catch(() => {});
-  });
-}
-</script>
 </body>
 </html>

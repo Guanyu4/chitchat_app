@@ -1,6 +1,36 @@
 /* ChitChat — client app */
 'use strict';
 
+// Đăng ký service worker (chuyển từ inline script để tương thích CSP nghiêm ngặt)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      // Có bản mới → tự tải lại để luôn dùng bản mới nhất
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', () => {
+          if (nw.state === 'activated' && navigator.serviceWorker.controller) {
+            window.location.reload();
+          }
+        });
+      });
+    }).catch(() => {});
+  });
+}
+
+// Xử lý ảnh lỗi tập trung (thay cho onerror inline — CSP chặn inline handlers)
+// data-fb: avatar → gỡ img, hiện chữ cái | msgimg → hiện placeholder | media → ẩn
+document.addEventListener('error', (e) => {
+  const t = e.target;
+  if (!t || t.tagName !== 'IMG' || !t.dataset.fb) return;
+  if (t.dataset.fb === 'avatar') t.remove();
+  else if (t.dataset.fb === 'msgimg') {
+    t.closest('.bubble')?.classList.add('img-broken');
+    t.remove();
+  } else if (t.dataset.fb === 'media') t.style.display = 'none';
+}, true);
+
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 
@@ -46,9 +76,9 @@ function initials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 function avatarHTML(name, sizeClass = '', online = false, avatarUrl = null) {
-  // Nếu ảnh lỗi (404) → onerror tự gỡ img, hiện chữ cái thay thế
+  // Nếu ảnh lỗi (404) → listener tập trung gỡ img, hiện chữ cái thay thế
   const inner = avatarUrl
-    ? `<img src="${esc(avatarUrl)}" alt="" loading="lazy" onerror="this.remove()">${esc(initials(name))}`
+    ? `<img src="${esc(avatarUrl)}" alt="" loading="lazy" data-fb="avatar">${esc(initials(name))}`
     : esc(initials(name));
   return `<div class="avatar ${sizeClass}" style="background:${avatarColor(name)}">${inner}` +
     (online ? '<span class="online-dot"></span>' : '') + `</div>`;
@@ -56,7 +86,7 @@ function avatarHTML(name, sizeClass = '', online = false, avatarUrl = null) {
 function setAvatar(el, name, online, avatarUrl = null) {
   el.style.background = avatarColor(name);
   el.innerHTML = avatarUrl
-    ? `<img src="${esc(avatarUrl)}" alt="" onerror="this.remove()">${esc(initials(name))}`
+    ? `<img src="${esc(avatarUrl)}" alt="" data-fb="avatar">${esc(initials(name))}`
     : esc(initials(name));
   if (online) el.insertAdjacentHTML('beforeend', '<span class="online-dot"></span>');
 }
@@ -398,7 +428,7 @@ async function loadInfoMedia(convId) {
     const audios = media.filter((m) => m.type === 'audio');
     box.innerHTML =
       (imgs.length ? `<div class="media-grid">${imgs.map((m) =>
-        `<img src="${esc(m.content)}" loading="lazy" data-src="${esc(m.content)}" onerror="this.style.display='none'">`).join('')}</div>` : '') +
+        `<img src="${esc(m.content)}" loading="lazy" data-src="${esc(m.content)}" data-fb="media">`).join('')}</div>` : '') +
       (audios.length ? `<div class="media-audio">${audios.map((m) =>
         `<audio controls preload="none" src="${esc(m.content)}" style="width:100%;margin-top:6px"></audio>`).join('')}</div>` : '');
     box.querySelectorAll('img').forEach((img) => {
@@ -897,7 +927,7 @@ function fmtDur(sec) {
 
 function bubbleHTML(msg) {
   if (msg.type === 'image') {
-    return `<div class="bubble"><img class="msg-img" src="${esc(msg.content)}" alt="Ảnh" loading="lazy" onerror="this.closest('.bubble').classList.add('img-broken');this.remove()"><span class="img-broken-text">🖼️ Ảnh không còn tồn tại</span></div>`;
+    return `<div class="bubble"><img class="msg-img" src="${esc(msg.content)}" alt="Ảnh" loading="lazy" data-fb="msgimg"><span class="img-broken-text">🖼️ Ảnh không còn tồn tại</span></div>`;
   }
   if (msg.type === 'audio') {
     return `<div class="bubble"><audio controls preload="metadata" src="${esc(msg.content)}"></audio></div>`;
