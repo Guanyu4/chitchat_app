@@ -1383,24 +1383,62 @@ $('#btn-mic').onclick = async () => {
 
 /* ---------- Upload ảnh ---------- */
 $('#btn-attach').onclick = () => $('#file-input').click();
+
+/* Upload + gửi 1 hoặc nhiều file (ảnh/audio) — dùng chung cho chọn file và kéo thả */
+async function uploadAndSendFiles(files) {
+  const convId = state.activeConvId;
+  if (!convId || !files.length) return;
+  for (const file of files) {
+    if (file.size > 10 * 1024 * 1024) { toast(`File "${file.name}" quá lớn (tối đa 10MB).`); continue; }
+    const isImg = file.type.startsWith('image/');
+    const isAud = file.type.startsWith('audio/');
+    if (!isImg && !isAud) { toast(`Không hỗ trợ file "${file.name}".`); continue; }
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      toast('Đang tải file lên...');
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${state.token}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload thất bại');
+      sendMessage({ content: data.url, type: isImg ? 'image' : 'audio' });
+    } catch (err) { toast(err.message); }
+  }
+}
 $('#file-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
+  const files = [...e.target.files];
   e.target.value = '';
-  if (!file || !state.activeConvId) return;
-  if (file.size > 10 * 1024 * 1024) return toast('File tối đa 10MB.');
-  const fd = new FormData();
-  fd.append('file', file);
-  try {
-    toast('Đang tải ảnh lên...');
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${state.token}` },
-      body: fd,
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Upload thất bại');
-    sendMessage({ content: data.url, type: 'image' });
-  } catch (err) { toast(err.message); }
+  uploadAndSendFiles(files);
+});
+
+/* ---------- Kéo thả file vào đoạn chat ---------- */
+let dragDepth = 0;
+function showDropOverlay(show) {
+  if (!state.activeConvId) show = false;
+  $('#drop-overlay').classList.toggle('hidden', !show);
+}
+window.addEventListener('dragenter', (e) => {
+  if (!e.dataTransfer?.types.includes('Files')) return;
+  e.preventDefault();
+  dragDepth++;
+  showDropOverlay(true);
+});
+window.addEventListener('dragover', (e) => {
+  if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
+});
+window.addEventListener('dragleave', (e) => {
+  if (!e.dataTransfer?.types.includes('Files')) return;
+  if (--dragDepth <= 0) { dragDepth = 0; showDropOverlay(false); }
+});
+window.addEventListener('drop', (e) => {
+  if (!e.dataTransfer?.types.includes('Files')) return;
+  e.preventDefault(); // chặn trình duyệt mở file khi thả ngoài vùng chat
+  dragDepth = 0;
+  showDropOverlay(false);
+  uploadAndSendFiles([...(e.dataTransfer.files || [])]);
 });
 
 /* ---------- Emoji ---------- */
