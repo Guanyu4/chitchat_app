@@ -130,11 +130,24 @@ router.get('/conversations/:id/search', async (req, res) => {
 });
 
 // ---- Upload file ----
-// Nếu có CLOUDINARY_URL → lưu lên Cloudinary (không mất khi server restart).
-// Không có → lưu local như cũ (dev local).
-const cloudinary = require('cloudinary').v2;
-const USE_CLOUDINARY = !!process.env.CLOUDINARY_URL;
-if (USE_CLOUDINARY) cloudinary.config({ secure: true }); // tự đọc CLOUDINARY_URL
+// Nếu có CLOUDINARY_URL hợp lệ → lưu lên Cloudinary (không mất khi server restart).
+// Không có hoặc sai → fallback lưu local, server vẫn chạy bình thường.
+let cloudinary = null;
+let USE_CLOUDINARY = false;
+try {
+  const c = require('cloudinary').v2;
+  const url = (process.env.CLOUDINARY_URL || '').trim();
+  if (url.startsWith('cloudinary://')) {
+    c.config({ secure: true }); // tự đọc CLOUDINARY_URL
+    cloudinary = c;
+    USE_CLOUDINARY = true;
+    console.log('☁️  Cloudinary: bật lưu trữ đám mây');
+  } else if (url) {
+    console.warn('⚠️  CLOUDINARY_URL không hợp lệ (phải bắt đầu bằng "cloudinary://") — dùng lưu trữ local.');
+  }
+} catch (e) {
+  console.warn('⚠️  Không khởi tạo được Cloudinary — dùng lưu trữ local:', e.message);
+}
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '..', '..', 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
