@@ -1,5 +1,4 @@
 
-README.md
 💬 ChitChat
 Ứng dụng nhắn tin thời gian thực lấy cảm hứng từ Facebook Messenger. Chạy tốt trên cả máy tính và điện thoại.
 
