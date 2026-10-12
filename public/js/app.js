@@ -734,16 +734,185 @@ function makePeerConnection(callId, conversationId) {
   return pc;
 }
 
-async function startCall(kind) {
+/* ---------- Kiểm tra thiết bị trước khi gọi ---------- */
+const devCheck = { kind: null, stream: null, audioCtx: null, raf: 0, micId: null, speakerId: null, camId: null };
+
+function micCamErrorMsg(e) {
+  switch (e?.name) {
+    case 'NotAllowedError':
+      return 'Bạn đã chặn quyền micro/camera. Bấm icon 🔒 trên thanh địa chỉ để cho phép rồi thử lại.';
+    case 'NotFoundError':
+      return 'Không tìm thấy micro/camera trên thiết bị này.';
+    case 'NotReadableError':
+      return 'Micro/camera đang bị ứng dụng khác sử dụng. Hãy tắt ứng dụng đó rồi thử lại.';
+    case 'OverconstrainedError':
+      return 'Thiết bị đã chọn không khả dụng. Hãy chọn thiết bị khác.';
+    default:
+      return 'Không truy cập được micro/camera. Hãy kiểm tra thiết bị rồi thử lại.';
+  }
+}
+function setDcError(msg) {
+  const el = $('#dc-error');
+  el.textContent = msg || '';
+  el.classList.toggle('hidden', !msg);
+  $('#dc-call').disabled = !!msg;
+}
+function fillDevSelect(sel, devices, savedId) {
+  sel.innerHTML = devices.length
+    ? devices.map((d, i) => `<option value="${d.deviceId}">${esc(d.label || `Thiết bị ${i + 1}`)}</option>`).join('')
+    : '<option value="">Không tìm thấy thiết bị</option>';
+  if (savedId && devices.some((d) => d.deviceId === savedId)) sel.value = savedId;
+}
+function closeDevCheckStream() {
+  cancelAnimationFrame(devCheck.raf);
+  devCheck.stream?.getTracks().forEach((t) => t.stop());
+  devCheck.stream = null;
+  if (devCheck.audioCtx) { devCheck.audioCtx.close().catch(() => {}); devCheck.audioCtx = null; }
+  const v = $('#dc-cam-preview');
+  if (v) v.srcObject = null;
+  $('#dc-mic-level').style.width = '0%';
+}
+function closeDevCheckModal() {
+  closeDevCheckStream();
+  $('#devcheck-modal').classList.add('hidden');
+}
+
+// Tạo tiếng "bíp" thử loa (file WAV sinh trực tiếp, không cần tải)
+let beepUrl = null;
+function makeBeepUrl() {
+  const sr = 44100, dur = 0.7, n = Math.floor(sr * dur);
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const wstr = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  wstr(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); wstr(8, 'WAVE');
+  wstr(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  wstr(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const env = Math.min(1, i / (sr * 0.02)) * (1 - i / n); // fade in/out
+    const s = Math.sin(2 * Math.PI * 880 * t) * 0.5 * env;
+    v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, s)) * 32767, true);
+  }
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+
+async function startDevCheckStream() {
+  closeDevCheckStream();
+  setDcError('');
+  const audioC = devCheck.micId ? { deviceId: { exact: devCheck.micId } } : true;
+  const videoC = devCheck.kind !== 'video' ? false
+    : devCheck.camId ? { deviceId: { exact: devCheck.camId } } : true;
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: audioC, video: videoC });
+  } catch (e) { setDcError(micCamErrorMsg(e)); return; }
+  devCheck.stream = stream;
+  try {
+    // Thanh đo mức thu của micro (real-time)
+    const AC = window.AudioContext || window.webkitAudioContext;
+    devCheck.audioCtx = new AC();
+    const src = devCheck.audioCtx.createMediaStreamSource(stream);
+    const analyser = devCheck.audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    src.connect(analyser);
+    const data = new Uint8Array(analyser.fftSize);
+    const bar = $('#dc-mic-level');
+    const tick = () => {
+      analyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) { const x = (data[i] - 128) / 128; sum += x * x; }
+      bar.style.width = Math.min(100, Math.sqrt(sum / data.length) * 320) + '%';
+      devCheck.raf = requestAnimationFrame(tick);
+    };
+    tick();
+  } catch { /* không đo được mức thu vẫn cho gọi */ }
+  if (devCheck.kind === 'video') {
+    const pv = $('#dc-cam-preview');
+    pv.srcObject = stream;
+    pv.classList.remove('hidden');
+  }
+}
+
+async function openDevCheck(kind) {
   if (!state.activeConvId) return toast('Hãy mở một cuộc trò chuyện trước.');
   if (callState.pc || callState.pendingOffer) return toast('Đang có cuộc gọi khác.');
   const conv = getActiveConv();
   if (conv?.type !== 'private') return toast('Hiện chỉ hỗ trợ gọi 1-1.');
   if (!navigator.mediaDevices?.getUserMedia) return toast('Thiết bị không hỗ trợ gọi điện.');
-  let stream;
+  devCheck.kind = kind;
+  $('#devcheck-modal').classList.remove('hidden');
+  $('#dc-cam-row').classList.toggle('hidden', kind !== 'video');
+  $('#dc-call').innerHTML = kind === 'video' ? '🎥 Gọi ngay' : '📞 Gọi ngay';
+  // Xin quyền trước để enumerateDevices hiện tên thiết bị
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
-  } catch { return toast('Không truy cập được micro/camera. Hãy cấp quyền.'); }
+    const tmp = await navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
+    tmp.getTracks().forEach((t) => t.stop());
+  } catch (e) { setDcError(micCamErrorMsg(e)); return; }
+  let devices = [];
+  try { devices = await navigator.mediaDevices.enumerateDevices(); } catch { /* bỏ qua */ }
+  fillDevSelect($('#dc-mic'), devices.filter((d) => d.kind === 'audioinput'), devCheck.micId);
+  fillDevSelect($('#dc-cam'), devices.filter((d) => d.kind === 'videoinput'), devCheck.camId);
+  const speakers = devices.filter((d) => d.kind === 'audiooutput');
+  const canSink = typeof Audio !== 'undefined' && typeof Audio.prototype.setSinkId === 'function';
+  $('#dc-speaker').classList.toggle('hidden', !(canSink && speakers.length));
+  if (canSink && speakers.length) fillDevSelect($('#dc-speaker'), speakers, devCheck.speakerId);
+  await startDevCheckStream();
+}
+
+$('#dc-mic').addEventListener('change', (e) => {
+  devCheck.micId = e.target.value || null;
+  startDevCheckStream();
+});
+$('#dc-cam').addEventListener('change', (e) => {
+  devCheck.camId = e.target.value || null;
+  startDevCheckStream();
+});
+$('#dc-speaker').addEventListener('change', (e) => {
+  devCheck.speakerId = e.target.value || null;
+});
+$('#dc-test-speaker').onclick = async () => {
+  try {
+    if (!beepUrl) beepUrl = makeBeepUrl();
+    const audio = new Audio(beepUrl);
+    const spk = $('#dc-speaker').value;
+    if (spk && typeof audio.setSinkId === 'function') {
+      try { await audio.setSinkId(spk); } catch { /* dùng loa mặc định */ }
+    }
+    await audio.play();
+  } catch { toast('Không phát được âm thanh thử.'); }
+};
+$('#dc-cancel').onclick = closeDevCheckModal;
+$('#dc-x').onclick = closeDevCheckModal;
+$('#devcheck-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'devcheck-modal') closeDevCheckModal();
+});
+$('#dc-call').onclick = () => {
+  const stream = devCheck.stream;
+  const kind = devCheck.kind;
+  // Giữ stream lại cho cuộc gọi: chỉ tắt meter + preview, KHÔNG stop tracks
+  devCheck.stream = null;
+  cancelAnimationFrame(devCheck.raf);
+  if (devCheck.audioCtx) { devCheck.audioCtx.close().catch(() => {}); devCheck.audioCtx = null; }
+  const pv = $('#dc-cam-preview');
+  if (pv) pv.srcObject = null;
+  $('#dc-mic-level').style.width = '0%';
+  $('#devcheck-modal').classList.add('hidden');
+  startCall(kind, stream); // tái dùng stream đã kiểm tra, khỏi xin quyền lại
+};
+
+async function startCall(kind, presetStream = null) {
+  if (!state.activeConvId) return toast('Hãy mở một cuộc trò chuyện trước.');
+  if (callState.pc || callState.pendingOffer) return toast('Đang có cuộc gọi khác.');
+  const conv = getActiveConv();
+  if (conv?.type !== 'private') return toast('Hiện chỉ hỗ trợ gọi 1-1.');
+  if (!navigator.mediaDevices?.getUserMedia) return toast('Thiết bị không hỗ trợ gọi điện.');
+  let stream = presetStream;
+  if (!stream) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
+    } catch (e) { return toast(micCamErrorMsg(e)); }
+  }
   const callId = 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const conversationId = state.activeConvId;
   const pc = makePeerConnection(callId, conversationId);
@@ -773,8 +942,11 @@ async function acceptCall() {
   if (!pendingOffer) return;
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
-  } catch { toast('Không truy cập được micro/camera.'); return; }
+    // Dùng thiết bị đã chọn ở bảng kiểm tra (nếu có)
+    const audioC = devCheck.micId ? { deviceId: { exact: devCheck.micId } } : true;
+    const videoC = kind !== 'video' ? false : devCheck.camId ? { deviceId: { exact: devCheck.camId } } : true;
+    stream = await navigator.mediaDevices.getUserMedia({ audio: audioC, video: videoC });
+  } catch (e) { toast(micCamErrorMsg(e)); return; }
   const pc = makePeerConnection(callId, conversationId);
   stream.getTracks().forEach((t) => pc.addTrack(t, stream));
   try {
@@ -820,8 +992,8 @@ function stopRingtone() {
   if (ringCtx) { ringCtx.close().catch(() => {}); ringCtx = null; }
 }
 
-$('#btn-voice-call').onclick = () => startCall('audio');
-$('#btn-video-call').onclick = () => startCall('video');
+$('#btn-voice-call').onclick = () => openDevCheck('audio');
+$('#btn-video-call').onclick = () => openDevCheck('video');
 $('#call-accept-btn').onclick = () => { stopRingtone(); acceptCall(); };
 $('#call-reject-btn').onclick = () => {
   const { callId, conversationId } = callState;

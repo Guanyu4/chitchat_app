@@ -224,6 +224,37 @@
 </div>
 
 <!-- Modal trang cá nhân -->
+<!-- Modal kiểm tra thiết bị trước khi gọi -->
+<div id="devcheck-modal" class="modal hidden">
+  <div class="modal-card">
+    <button class="icon-btn modal-close" id="dc-x">✕</button>
+    <h3 style="margin-bottom:4px">🎧 Kiểm tra thiết bị</h3>
+    <p class="devcheck-sub">Kiểm tra micro và loa trước khi gọi để nghe nói rõ ràng</p>
+    <div class="devcheck-row">
+      <label>🎤 Micro</label>
+      <select id="dc-mic" class="devcheck-select"></select>
+      <div class="mic-meter"><div id="dc-mic-level"></div></div>
+      <div class="devcheck-hint">Nói thử — thanh xanh nhảy là micro đang thu tiếng tốt</div>
+    </div>
+    <div class="devcheck-row" id="dc-speaker-row">
+      <label>🔊 Loa</label>
+      <select id="dc-speaker" class="devcheck-select hidden"></select>
+      <button id="dc-test-speaker" class="privacy-btn" style="margin-top:8px">🔔 Phát âm thanh thử</button>
+      <div class="devcheck-hint">Bấm để phát tiếng chuông — nếu nghe thấy là loa hoạt động</div>
+    </div>
+    <div class="devcheck-row hidden" id="dc-cam-row">
+      <label>📷 Camera</label>
+      <select id="dc-cam" class="devcheck-select"></select>
+      <video id="dc-cam-preview" autoplay muted playsinline></video>
+    </div>
+    <div id="dc-error" class="auth-error"></div>
+    <div class="devcheck-actions">
+      <button id="dc-cancel" class="privacy-btn" style="margin-bottom:0">Hủy</button>
+      <button id="dc-call" class="btn-primary" style="width:auto;padding:12px 30px;margin-top:0">📞 Gọi ngay</button>
+    </div>
+  </div>
+</div>
+
 <div id="profile-modal" class="modal hidden">
   <div class="modal-card">
     <button class="icon-btn modal-close" data-close="profile-modal">✕</button>
