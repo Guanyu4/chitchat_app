@@ -280,6 +280,23 @@ const sendAndWait = (socket, payload) =>
       });
     }
 
+    // 11j. Màu theme đoạn chat (lưu server)
+    {
+      const r = await api(`/api/conversations/${conversationId}/theme`, a.token, {
+        method: 'POST', body: JSON.stringify({ color: '#E91E63' }),
+      });
+      const { conversations } = await api('/api/conversations', a.token);
+      const c = conversations.find((x) => x.id === conversationId);
+      ok('Đổi màu theme đoạn chat',
+        r.color === '#E91E63' && c.theme_color === '#E91E63');
+      const bad = await fetch(`${BASE}/api/conversations/${conversationId}/theme`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${a.token}` },
+        body: JSON.stringify({ color: 'red' }),
+      });
+      ok('Chặn màu theme không hợp lệ', bad.status === 400);
+    }
+
     // 12. Offline: B disconnect → A nhận user:offline (lọc đúng userId, bỏ qua event của C)
     const offP = new Promise((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('timeout chờ user:offline')), 8000);

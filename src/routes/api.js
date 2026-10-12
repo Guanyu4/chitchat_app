@@ -7,7 +7,7 @@ const {
   searchUsers, getContacts, getUserById, updateAvatar, getConversationsForUser, getOrCreatePrivateConversation,
   createConversation, getMessages, isMember,
   markConversationSeen, setMuted, setArchived, getMedia, searchMessages, setWallpaper,
-  setQuickEmoji,
+  setQuickEmoji, setThemeColor,
 } = require('../db');
 const { authMiddleware, rateLimit } = require('../middleware');
 
@@ -125,6 +125,18 @@ router.post('/conversations/:id/quick-emoji', async (req, res) => {
   res.json({ ok: true, emoji });
 });
 
+// Đổi màu bong bóng chat (riêng cho mình, lưu server để đăng nhập lại vẫn giữ)
+router.post('/conversations/:id/theme', async (req, res) => {
+  const convId = Number(req.params.id);
+  if (!(await isMember(convId, req.user.id)))
+    return res.status(403).json({ error: 'Bạn không thuộc cuộc trò chuyện này.' });
+  const color = (req.body?.color || '').trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(color))
+    return res.status(400).json({ error: 'Màu không hợp lệ.' });
+  await setThemeColor(convId, req.user.id, color);
+  res.json({ ok: true, color });
+});
+
 // File phương tiện đã chia sẻ
 router.get('/conversations/:id/media', async (req, res) => {
   const convId = Number(req.params.id);
@@ -226,6 +238,7 @@ router.post('/users/me/avatar', (req, res) => {
       req.app.get('io')?.emit('user:avatar', { userId: user.id, avatarUrl: url });
       res.json({ user });
     } catch (e) {
+      console.error('❌ Đổi avatar thất bại:', e.message || e);
       res.status(500).json({ error: 'Đổi avatar thất bại.' });
     }
   });
@@ -239,6 +252,7 @@ router.post('/upload', uploadLimiter, (req, res) => {
       const url = await fileUrl(req.file);
       res.status(201).json({ url });
     } catch (e) {
+      console.error('❌ Upload file thất bại:', e.message || e);
       res.status(500).json({ error: 'Upload thất bại, thử lại sau.' });
     }
   });

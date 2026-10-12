@@ -285,9 +285,12 @@ $('#btn-back-chats').onclick = () => setView('chats');
 
 /* ---------- Info panel: thông tin đoạn chat ---------- */
 const THEME_COLORS = ['#0084FF', '#7B61FF', '#E91E63', '#E0245E', '#FF6B00', '#00A550', '#0097A7'];
-function applyTheme(convId) {
-  const c = localStorage.getItem(`chitchat_theme_${convId}`) || '#0084FF';
-  document.documentElement.style.setProperty('--bubble-me', c);
+// Màu theme: ưu tiên server, fallback localStorage (bản cũ) rồi mặc định
+function themeColorOf(conv) {
+  return conv?.theme_color || localStorage.getItem(`chitchat_theme_${conv?.id}`) || '#0084FF';
+}
+function applyTheme(conv) {
+  document.documentElement.style.setProperty('--bubble-me', themeColorOf(conv));
 }
 
 /* ---------- Hình nền đoạn chat ---------- */
@@ -372,7 +375,7 @@ function openInfoPane() {
   $('#info-search-input').value = '';
   $('#info-search-results').innerHTML = '';
   renderInfoMembers(conv);
-  renderThemeDots(conv.id);
+  renderThemeDots(conv);
   renderQuickEmojis(conv);
   applyWallpaper(conv);
   loadInfoMedia(conv.id);
@@ -405,16 +408,25 @@ function renderInfoMembers(conv) {
   }
 }
 
-function renderThemeDots(convId) {
-  const cur = localStorage.getItem(`chitchat_theme_${convId}`) || '#0084FF';
+function renderThemeDots(conv) {
+  const cur = (themeColorOf(conv) || '').toLowerCase();
   $('#theme-dots').innerHTML = THEME_COLORS.map((c) =>
-    `<button class="theme-dot${c === cur ? ' selected' : ''}" data-color="${c}" style="background:${c}" title="${c}"></button>`
+    `<button type="button" class="theme-dot${c.toLowerCase() === cur ? ' selected' : ''}" data-color="${c}" style="background:${c}" title="${c}"></button>`
   ).join('');
   $$('#theme-dots .theme-dot').forEach((d) => {
-    d.onclick = () => {
-      localStorage.setItem(`chitchat_theme_${convId}`, d.dataset.color);
-      applyTheme(convId);
-      renderThemeDots(convId);
+    d.onclick = async () => {
+      const color = d.dataset.color;
+      try {
+        await api(`/api/conversations/${conv.id}/theme`, {
+          method: 'POST',
+          body: JSON.stringify({ color }),
+        });
+        conv.theme_color = color;
+        localStorage.setItem(`chitchat_theme_${conv.id}`, color); // giữ đồng bộ cho bản cũ
+        applyTheme(conv);
+        renderThemeDots(conv);
+        toast('Đã đổi màu đoạn chat');
+      } catch (e) { toast(e.message || 'Đổi màu thất bại'); }
     };
   });
 }
@@ -933,7 +945,7 @@ async function openConversation(id) {
   state.messages = [];
   state.hasMore = true;
   state.typingUsers.clear();
-  applyTheme(id);
+  applyTheme(getConv(id));
   state.socket?.emit('conv:join', { conversationId: id });
   updateTypingBar();
   renderConvList($('#search-input').value);
