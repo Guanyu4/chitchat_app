@@ -8,8 +8,14 @@ const crypto = require('crypto');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
+const dbUrl = process.env.TURSO_DATABASE_URL || `file:${path.join(DATA_DIR, 'messenger.db')}`;
+// Validate sớm để báo lỗi rõ ràng thay vì crash khó hiểu từ libsql
+if (!/^(libsql|https?|wss?|file):/.test(dbUrl)) {
+  console.error(`❌ TURSO_DATABASE_URL không hợp lệ: phải bắt đầu bằng libsql:// (giá trị hiện tại bắt đầu bằng "${dbUrl.split(':')[0]}:"). Kiểm tra lại biến môi trường trên Render.`);
+  process.exit(1);
+}
 const db = createClient({
-  url: process.env.TURSO_DATABASE_URL || `file:${path.join(DATA_DIR, 'messenger.db')}`,
+  url: dbUrl,
   authToken: process.env.TURSO_AUTH_TOKEN || undefined,
 });
 
@@ -60,8 +66,8 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id);
 CREATE INDEX IF NOT EXISTS idx_members_user ON conversation_members(user_id);
 `);
-  // Migration: cột muted / archived / wallpaper cho conversation_members (bỏ qua nếu đã có)
-  for (const col of ['muted INTEGER NOT NULL DEFAULT 0', 'archived INTEGER NOT NULL DEFAULT 0', 'wallpaper TEXT']) {
+  // Migration: cột muted / archived / wallpaper / quick_emoji cho conversation_members (bỏ qua nếu đã có)
+  for (const col of ['muted INTEGER NOT NULL DEFAULT 0', 'archived INTEGER NOT NULL DEFAULT 0', 'wallpaper TEXT', `quick_emoji TEXT DEFAULT '👍'`]) {
     try { await db.execute(`ALTER TABLE conversation_members ADD COLUMN ${col}`); } catch { /* đã tồn tại */ }
   }
   // PRAGMA journal_mode chỉ chạy ở local file; Turso cloud không cho phép PRAGMA qua remote
@@ -165,7 +171,7 @@ async function getOrCreatePrivateConversation(uidA, uidB) {
 async function getConversationsForUser(uid, onlyArchived = false) {
   const rs = await q(
     `SELECT c.id, c.type, c.name, c.created_at, cm.muted AS muted, cm.archived AS archived,
-      cm.wallpaper AS wallpaper,
+      cm.wallpaper AS wallpaper, COALESCE(cm.quick_emoji, '👍') AS quick_emoji,
       (SELECT m.content FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_content,
       (SELECT m.type FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_type,
       (SELECT m.sender_id FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_sender_id,
@@ -300,6 +306,14 @@ async function setWallpaper(conversationId, userId, wallpaper) {
   );
 }
 
+// Biểu tượng cảm xúc nhanh (riêng từng người, mặc định 👍)
+async function setQuickEmoji(conversationId, userId, emoji) {
+  await q(
+    `UPDATE conversation_members SET quick_emoji = ? WHERE conversation_id = ? AND user_id = ?`,
+    [emoji, conversationId, userId]
+  );
+}
+
 // File phương tiện đã chia sẻ trong đoạn chat
 async function getMedia(conversationId) {
   const rs = await q(
@@ -340,5 +354,5 @@ module.exports = {
   isMember, memberIdsOf, createMessage, getMessages,
   markConversationSeen, markDelivered, getJwtSecret,
   setMuted, setArchived, unarchiveOnMessage, getMedia, searchMessages,
-  setWallpaper,
+  setWallpaper, setQuickEmoji,
 };

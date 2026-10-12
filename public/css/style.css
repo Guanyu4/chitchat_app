@@ -520,6 +520,24 @@ html.dark .rec-indicator { background: linear-gradient(135deg, #3A1D24, #2A1418)
 }
 .theme-dot:hover { transform: scale(1.12); }
 .theme-dot.selected { border-color: var(--blue); transform: scale(1.08); }
+/* Picker biểu tượng cảm xúc nhanh */
+.quick-emojis { display: flex; gap: 8px; flex-wrap: wrap; }
+.quick-emoji {
+  width: 44px; height: 44px; border-radius: 14px; font-size: 24px;
+  border: 2px solid transparent; background: var(--panel-2); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .14s var(--ease), border .14s;
+}
+.quick-emoji:hover { transform: scale(1.12); }
+.quick-emoji.selected { border-color: var(--blue); transform: scale(1.06); }
+/* Nút like: nhấn giữ để phóng to */
+#btn-like { transition: transform .16s var(--ease); transform-origin: center; touch-action: none; }
+#btn-like.charging { animation: likeCharge 1.1s var(--ease) forwards; }
+@keyframes likeCharge {
+  0% { transform: scale(1); }
+  60% { transform: scale(1.9); }
+  100% { transform: scale(2.4); }
+}
 .media-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .media-grid img {
   width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; cursor: pointer;

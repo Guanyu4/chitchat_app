@@ -373,6 +373,7 @@ function openInfoPane() {
   $('#info-search-results').innerHTML = '';
   renderInfoMembers(conv);
   renderThemeDots(conv.id);
+  renderQuickEmojis(conv);
   applyWallpaper(conv);
   loadInfoMedia(conv.id);
   $('#info-pane').classList.remove('hidden');
@@ -416,6 +417,55 @@ function renderThemeDots(convId) {
       renderThemeDots(convId);
     };
   });
+}
+
+/* ---------- Biểu tượng cảm xúc nhanh ---------- */
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥'];
+const LIKE_SIZES = [46, 78, 112]; // px theo mức giữ (tier 1-3)
+
+// Phân tích tin nhắn like: "👍" (cũ) hoặc "<emoji>:<tier>" (mới)
+function likeInfo(content) {
+  if (content === '👍') return { emoji: '👍', tier: 1 };
+  const m = /^(\S{1,10}):([123])$/u.exec(content || '');
+  if (m && /\p{Extended_Pictographic}/u.test(m[1])) return { emoji: m[1], tier: Number(m[2]) };
+  return null;
+}
+// Text hiển thị (bỏ hậu tố tier) — dùng cho preview danh sách chat
+function likeDisplay(content) {
+  const info = likeInfo(content);
+  return info ? info.emoji : content;
+}
+
+function quickEmojiOf(conv) {
+  return conv?.quick_emoji || '👍';
+}
+
+function renderQuickEmojis(conv) {
+  const cur = quickEmojiOf(conv);
+  $('#quick-emojis').innerHTML = QUICK_EMOJIS.map((e) =>
+    `<button type="button" class="quick-emoji${e === cur ? ' selected' : ''}" data-emoji="${e}">${e}</button>`
+  ).join('');
+  $$('#quick-emojis .quick-emoji').forEach((b) => {
+    b.onclick = async () => {
+      const emoji = b.dataset.emoji;
+      try {
+        await api(`/api/conversations/${conv.id}/quick-emoji`, {
+          method: 'POST',
+          body: JSON.stringify({ emoji }),
+        });
+        conv.quick_emoji = emoji;
+        $('#btn-like').textContent = emoji;
+        renderQuickEmojis(conv);
+        toast('Đã đổi biểu tượng cảm xúc nhanh');
+      } catch (e) { toast(e.message || 'Đổi thất bại'); }
+    };
+  });
+}
+
+function sendLike(tier = 1) {
+  const conv = getConv(state.activeConvId);
+  if (!conv) return;
+  sendMessage({ content: `${quickEmojiOf(conv)}:${tier}`, type: 'text' });
 }
 
 async function loadInfoMedia(convId) {
@@ -803,7 +853,7 @@ function renderConvList(filter = '') {
       ? (c.last_type === 'image' ? '📷 Đã gửi một ảnh'
         : c.last_type === 'audio' ? '🎤 Tin nhắn thoại'
         : c.last_type === 'call' ? '📞 Cuộc gọi'
-        : c.last_content)
+        : likeDisplay(c.last_content))
       : 'Bắt đầu cuộc trò chuyện';
     const prefix = c.last_sender_id === state.user.id ? 'Bạn: ' : '';
     const online = c.type === 'private' && peer?.online_status;
@@ -890,6 +940,7 @@ async function openConversation(id) {
   const conv = getConv(id);
   if (!conv) return;
   applyWallpaper(conv);
+  $('#btn-like').textContent = quickEmojiOf(conv); // emoji nhanh của đoạn chat này
 
   $('#chat-empty').classList.add('hidden');
   $('#chat-active').classList.remove('hidden');
@@ -934,6 +985,10 @@ function bubbleHTML(msg) {
   }
   if (msg.type === 'text' && msg.content === '👍') {
     return `<div class="bubble bubble-like">👍</div>`;
+  }
+  const li = msg.type === 'text' ? likeInfo(msg.content) : null;
+  if (li) {
+    return `<div class="bubble bubble-like" style="font-size:${LIKE_SIZES[li.tier - 1]}px">${esc(li.emoji)}</div>`;
   }
   return `<div class="bubble">${esc(msg.content)}</div>`;
 }
@@ -1159,16 +1214,45 @@ $('#msg-input').addEventListener('input', () => {
   $('#btn-send').classList.toggle('hidden', !has);
   $('#btn-like').classList.toggle('hidden', has);
 });
-$('#btn-like').onclick = () => {
-  const input = $('#msg-input');
-  if (!input.value.trim() && state.activeConvId) {
-    sendMessage({ content: '👍', type: 'text' });
-  } else {
-    input.value += '👍';
-    input.dispatchEvent(new Event('input'));
-    input.focus();
-  }
-};
+/* Nhấn giữ nút emoji: phóng to dần — thả ra là gửi (giữ càng lâu gửi càng to) */
+(() => {
+  const btn = $('#btn-like');
+  let holdStart = 0, holding = false;
+  const cancel = () => {
+    holding = false;
+    btn.classList.remove('charging');
+  };
+  btn.addEventListener('pointerdown', (e) => {
+    if ($('#msg-input').value.trim()) return; // đang gõ thì để nút gửi lo
+    e.preventDefault();
+    holding = true;
+    holdStart = Date.now();
+    btn.classList.add('charging');
+  });
+  btn.addEventListener('pointerup', () => {
+    if (!holding) return;
+    const dur = Date.now() - holdStart;
+    cancel();
+    if (!state.activeConvId) return;
+    const tier = dur < 350 ? 1 : dur < 900 ? 2 : 3;
+    sendLike(tier);
+  });
+  btn.addEventListener('pointercancel', cancel);
+  btn.addEventListener('pointerleave', cancel);
+  btn.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sendLike(1); }
+  });
+  // Bấm khi ô nhập có chữ → chèn emoji vào ô chat (giữ hành vi cũ)
+  btn.addEventListener('click', () => {
+    const input = $('#msg-input');
+    if (input.value.trim()) {
+      const conv = getConv(state.activeConvId);
+      input.value += quickEmojiOf(conv);
+      input.dispatchEvent(new Event('input'));
+      input.focus();
+    }
+  });
+})();
 
 /* ---------- Tin nhắn thoại ---------- */
 let mediaRecorder = null, audioChunks = [], recTimer = null, recStart = 0;

@@ -7,6 +7,7 @@ const {
   searchUsers, getContacts, getUserById, updateAvatar, getConversationsForUser, getOrCreatePrivateConversation,
   createConversation, getMessages, isMember,
   markConversationSeen, setMuted, setArchived, getMedia, searchMessages, setWallpaper,
+  setQuickEmoji,
 } = require('../db');
 const { authMiddleware, rateLimit } = require('../middleware');
 
@@ -109,6 +110,19 @@ router.post('/conversations/:id/wallpaper', async (req, res) => {
     return res.status(400).json({ error: 'Hình nền không hợp lệ.' });
   await setWallpaper(convId, req.user.id, wallpaper);
   res.json({ ok: true, wallpaper });
+});
+
+// Đổi biểu tượng cảm xúc nhanh của đoạn chat (riêng cho mình)
+router.post('/conversations/:id/quick-emoji', async (req, res) => {
+  const convId = Number(req.params.id);
+  if (!(await isMember(convId, req.user.id)))
+    return res.status(403).json({ error: 'Bạn không thuộc cuộc trò chuyện này.' });
+  const emoji = (req.body?.emoji || '').trim();
+  // 1 emoji (1-10 ký tự, không khoảng trắng, phải chứa ký tự emoji)
+  if (!/^\S{1,10}$/u.test(emoji) || !/\p{Extended_Pictographic}/u.test(emoji))
+    return res.status(400).json({ error: 'Biểu tượng không hợp lệ.' });
+  await setQuickEmoji(convId, req.user.id, emoji);
+  res.json({ ok: true, emoji });
 });
 
 // File phương tiện đã chia sẻ

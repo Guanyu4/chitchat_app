@@ -260,6 +260,26 @@ const sendAndWait = (socket, payload) =>
       });
     }
 
+    // 11i. Biểu tượng cảm xúc nhanh
+    {
+      const r = await api(`/api/conversations/${conversationId}/quick-emoji`, a.token, {
+        method: 'POST', body: JSON.stringify({ emoji: '❤️' }),
+      });
+      const { conversations } = await api('/api/conversations', a.token);
+      const c = conversations.find((x) => x.id === conversationId);
+      ok('Đổi biểu tượng cảm xúc nhanh',
+        r.emoji === '❤️' && c.quick_emoji === '❤️');
+      const bad = await fetch(`${BASE}/api/conversations/${conversationId}/quick-emoji`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${a.token}` },
+        body: JSON.stringify({ emoji: 'hello' }),
+      });
+      ok('Chặn emoji nhanh không hợp lệ', bad.status === 400);
+      await api(`/api/conversations/${conversationId}/quick-emoji`, a.token, {
+        method: 'POST', body: JSON.stringify({ emoji: '👍' }),
+      });
+    }
+
     // 12. Offline: B disconnect → A nhận user:offline (lọc đúng userId, bỏ qua event của C)
     const offP = new Promise((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('timeout chờ user:offline')), 8000);
