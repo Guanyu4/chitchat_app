@@ -669,6 +669,8 @@ function showCallUI(mode) {
   $('#call-timer').classList.add('hidden');
   $('#call-center').style.display = '';
   $('#call-remote-video').style.display = 'none';
+  const ra0 = $('#call-remote-audio'); ra0.removeAttribute('src'); ra0.srcObject = null;
+  $('#call-unmute-btn').classList.add('hidden');
   $('#call-local-video').classList.add('hidden');
   $('#call-cam-btn').classList.toggle('hidden', callState.kind !== 'video');
   $('#call-mic-btn').classList.remove('off');
@@ -680,6 +682,8 @@ function hideCallUI() {
   stopRingtone();
   clearInterval(callState.timerInt);
   const rv = $('#call-remote-video'); rv.removeAttribute('src'); rv.srcObject = null;
+  const ra = $('#call-remote-audio'); ra.removeAttribute('src'); ra.srcObject = null;
+  $('#call-unmute-btn').classList.add('hidden');
   const lv = $('#call-local-video'); lv.removeAttribute('src'); lv.srcObject = null;
 }
 function startCallTimer() {
@@ -696,7 +700,7 @@ function cleanupCall() {
   if (callState.pc) { try { callState.pc.close(); } catch { /* ignore */ } }
   Object.assign(callState, {
     pc: null, stream: null, callId: null, kind: null, conversationId: null,
-    pendingOffer: null, startTime: 0, isCaller: false,
+    pendingOffer: null, startTime: 0, isCaller: false, _iceFailed: false,
   });
   hideCallUI();
 }
@@ -725,14 +729,49 @@ function makePeerConnection(callId, conversationId) {
       conversationId, callId, signal: { type: 'ice', candidate: e.candidate },
     });
   };
+  // Phát hiện kết nối media thất bại hoàn toàn → báo người dùng thử lại
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === 'failed' && !callState._iceFailed) {
+      callState._iceFailed = true;
+      toast('Không thiết lập được kết nối trực tiếp. Hãy thử gọi lại.');
+    }
+  };
   pc.ontrack = (e) => {
-    const rv = $('#call-remote-video');
-    rv.srcObject = e.streams[0];
-    rv.style.display = 'block';
-    $('#call-center').style.display = 'none';
+    const stream = e.streams[0];
+    if (!stream) return;
+    const hasVideo = stream.getVideoTracks().length > 0;
+    if (hasVideo) {
+      const rv = $('#call-remote-video');
+      rv.srcObject = stream;
+      rv.style.display = 'block';
+      $('#call-center').style.display = 'none';
+      tryPlayMedia(rv);
+    } else {
+      // Gọi thoại: dùng thẻ audio riêng, giữ nguyên giao diện avatar/tên
+      const ra = $('#call-remote-audio');
+      ra.srcObject = stream;
+      tryPlayMedia(ra);
+    }
   };
   return pc;
 }
+
+// Phát media từ xa. Trình duyệt có thể chặn tự phát (autoplay policy)
+// nếu track tới trễ sau cú bấm gọi → hiện nút để người dùng chạm bật tiếng.
+function tryPlayMedia(el) {
+  let p;
+  try { p = el.play(); } catch { p = null; }
+  if (p && typeof p.catch === 'function') {
+    p.catch(() => $('#call-unmute-btn').classList.remove('hidden'));
+  }
+}
+$('#call-unmute-btn').onclick = () => {
+  ['call-remote-video', 'call-remote-audio'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el && el.srcObject) el.play().catch(() => {});
+  });
+  $('#call-unmute-btn').classList.add('hidden');
+};
 
 /* ---------- Kiểm tra thiết bị trước khi gọi ---------- */
 const devCheck = { kind: null, stream: null, audioCtx: null, raf: 0, micId: null, speakerId: null, camId: null };

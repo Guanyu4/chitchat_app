@@ -205,12 +205,14 @@
 <!-- Overlay gọi thoại / video -->
 <div id="call-overlay" class="call-overlay hidden">
   <video id="call-remote-video" class="call-remote-video" autoplay playsinline></video>
+  <audio id="call-remote-audio" autoplay playsinline></audio>
   <div class="call-center" id="call-center">
     <div class="avatar avatar-xl" id="call-avatar"></div>
     <div class="call-name" id="call-name"></div>
     <div class="call-status" id="call-status">Đang gọi...</div>
     <div class="call-timer hidden" id="call-timer">0:00</div>
   </div>
+  <button id="call-unmute-btn" class="call-unmute hidden">🔊 Chạm để bật âm thanh</button>
   <video id="call-local-video" class="call-local-video hidden" autoplay playsinline muted></video>
   <div class="call-controls" id="call-controls">
     <button id="call-mic-btn" class="call-btn" title="Tắt/bật mic">🎤</button>

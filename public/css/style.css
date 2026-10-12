@@ -700,6 +700,16 @@ html.dark .rec-indicator { background: linear-gradient(135deg, #3A1D24, #2A1418)
 .devcheck-actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin-top: 6px; }
 #dc-error { margin: 4px 0 10px; }
 
+#call-remote-audio { display: none; }
+.call-unmute {
+  position: absolute; bottom: 130px; left: 50%; transform: translateX(-50%); z-index: 5;
+  background: var(--grad-brand); color: #fff; border: none;
+  padding: 14px 30px; border-radius: 30px; font-size: 16px; font-weight: 700;
+  cursor: pointer; box-shadow: 0 10px 30px rgba(0, 132, 255, .5);
+  animation: acceptGlow 1.6s infinite; white-space: nowrap;
+}
+.call-unmute:active { transform: translateX(-50%) scale(.96); }
+
 /* ---------- Modal ---------- */
 .modal {
   position: fixed; inset: 0; z-index: 250; background: rgba(10, 12, 16, .55);
