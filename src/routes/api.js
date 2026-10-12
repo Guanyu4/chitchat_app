@@ -104,7 +104,7 @@ router.post('/conversations/:id/wallpaper', async (req, res) => {
   if (!(await isMember(convId, req.user.id)))
     return res.status(403).json({ error: 'Bạn không thuộc cuộc trò chuyện này.' });
   const wallpaper = (req.body?.wallpaper || '').trim() || null;
-  if (wallpaper && !wallpaper.startsWith('/uploads/'))
+  if (wallpaper && !wallpaper.startsWith('/uploads/') && !/^https?:\/\//.test(wallpaper))
     return res.status(400).json({ error: 'Hình nền không hợp lệ.' });
   await setWallpaper(convId, req.user.id, wallpaper);
   res.json({ ok: true, wallpaper });
@@ -128,17 +128,25 @@ router.get('/conversations/:id/search', async (req, res) => {
   res.json({ results: await searchMessages(convId, q) });
 });
 
-// ---- Upload ảnh ----
+// ---- Upload file ----
+// Nếu có CLOUDINARY_URL → lưu lên Cloudinary (không mất khi server restart).
+// Không có → lưu local như cũ (dev local).
+const cloudinary = require('cloudinary').v2;
+const USE_CLOUDINARY = !!process.env.CLOUDINARY_URL;
+if (USE_CLOUDINARY) cloudinary.config({ secure: true }); // tự đọc CLOUDINARY_URL
+
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '..', '..', 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-const storage = multer.diskStorage({
-  destination: UPLOAD_DIR,
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, crypto.randomBytes(16).toString('hex') + ext);
-  },
-});
+const storage = USE_CLOUDINARY
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: UPLOAD_DIR,
+      filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        cb(null, crypto.randomBytes(16).toString('hex') + ext);
+      },
+    });
 const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
@@ -148,6 +156,26 @@ const upload = multer({
     else cb(new Error('Chỉ cho phép file ảnh hoặc âm thanh.'));
   },
 }).single('file');
+
+// Upload buffer lên Cloudinary, trả về secure_url
+function uploadToCloudinary(buffer) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: 'chitchat', resource_type: 'auto' },
+      (err, result) => (err ? reject(err) : resolve(result))
+    );
+    stream.end(buffer);
+  });
+}
+
+// Trả về URL cuối cùng của file vừa upload (cloud hoặc local)
+async function fileUrl(file) {
+  if (USE_CLOUDINARY) {
+    const result = await uploadToCloudinary(file.buffer);
+    return result.secure_url;
+  }
+  return `/uploads/${file.filename}`;
+}
 
 const uploadLimiter = rateLimit({ windowMs: 60_000, max: 30 });
 
@@ -159,7 +187,7 @@ router.post('/users/me/avatar', (req, res) => {
     if (!req.file.mimetype.startsWith('image/'))
       return res.status(400).json({ error: 'Avatar phải là file ảnh.' });
     try {
-      const url = `/uploads/${req.file.filename}`;
+      const url = await fileUrl(req.file);
       // Xoá avatar cũ nếu là file upload local
       const me = await getUserById(req.user.id);
       if (me?.avatar_url?.startsWith('/uploads/')) {
@@ -176,10 +204,15 @@ router.post('/users/me/avatar', (req, res) => {
 });
 
 router.post('/upload', uploadLimiter, (req, res) => {
-  upload(req, res, (err) => {
+  upload(req, res, async (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'Chưa chọn file.' });
-    res.status(201).json({ url: `/uploads/${req.file.filename}` });
+    try {
+      const url = await fileUrl(req.file);
+      res.status(201).json({ url });
+    } catch (e) {
+      res.status(500).json({ error: 'Upload thất bại, thử lại sau.' });
+    }
   });
 });
 

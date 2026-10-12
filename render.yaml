@@ -11,3 +11,5 @@ services:
         sync: false
       - key: TURSO_AUTH_TOKEN
         sync: false
+      - key: CLOUDINARY_URL
+        sync: false

@@ -46,25 +46,18 @@ function initials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 function avatarHTML(name, sizeClass = '', online = false, avatarUrl = null) {
-  const style = avatarUrl
-    ? `background-image:url("${avatarUrl}");background-size:cover;background-position:center;`
-    : `background:${avatarColor(name)};`;
-  const inner = avatarUrl ? '' : esc(initials(name));
-  return `<div class="avatar ${sizeClass}" style="${style}">${inner}` +
+  // Nếu ảnh lỗi (404) → onerror tự gỡ img, hiện chữ cái thay thế
+  const inner = avatarUrl
+    ? `<img src="${esc(avatarUrl)}" alt="" loading="lazy" onerror="this.remove()">${esc(initials(name))}`
+    : esc(initials(name));
+  return `<div class="avatar ${sizeClass}" style="background:${avatarColor(name)}">${inner}` +
     (online ? '<span class="online-dot"></span>' : '') + `</div>`;
 }
 function setAvatar(el, name, online, avatarUrl = null) {
-  el.innerHTML = '';
-  if (avatarUrl) {
-    el.style.backgroundImage = `url("${avatarUrl}")`;
-    el.style.backgroundSize = 'cover';
-    el.style.backgroundPosition = 'center';
-    el.style.backgroundColor = 'transparent';
-  } else {
-    el.style.backgroundImage = '';
-    el.style.background = avatarColor(name);
-    el.textContent = initials(name);
-  }
+  el.style.background = avatarColor(name);
+  el.innerHTML = avatarUrl
+    ? `<img src="${esc(avatarUrl)}" alt="" onerror="this.remove()">${esc(initials(name))}`
+    : esc(initials(name));
   if (online) el.insertAdjacentHTML('beforeend', '<span class="online-dot"></span>');
 }
 
@@ -405,7 +398,7 @@ async function loadInfoMedia(convId) {
     const audios = media.filter((m) => m.type === 'audio');
     box.innerHTML =
       (imgs.length ? `<div class="media-grid">${imgs.map((m) =>
-        `<img src="${esc(m.content)}" loading="lazy" data-src="${esc(m.content)}">`).join('')}</div>` : '') +
+        `<img src="${esc(m.content)}" loading="lazy" data-src="${esc(m.content)}" onerror="this.style.display='none'">`).join('')}</div>` : '') +
       (audios.length ? `<div class="media-audio">${audios.map((m) =>
         `<audio controls preload="none" src="${esc(m.content)}" style="width:100%;margin-top:6px"></audio>`).join('')}</div>` : '');
     box.querySelectorAll('img').forEach((img) => {
@@ -904,7 +897,7 @@ function fmtDur(sec) {
 
 function bubbleHTML(msg) {
   if (msg.type === 'image') {
-    return `<div class="bubble"><img class="msg-img" src="${esc(msg.content)}" alt="Ảnh" loading="lazy"></div>`;
+    return `<div class="bubble"><img class="msg-img" src="${esc(msg.content)}" alt="Ảnh" loading="lazy" onerror="this.closest('.bubble').classList.add('img-broken');this.remove()"><span class="img-broken-text">🖼️ Ảnh không còn tồn tại</span></div>`;
   }
   if (msg.type === 'audio') {
     return `<div class="bubble"><audio controls preload="metadata" src="${esc(msg.content)}"></audio></div>`;
