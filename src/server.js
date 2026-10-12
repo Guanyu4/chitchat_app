@@ -13,7 +13,17 @@ const io = new Server(server, {
 
 app.use(express.json({ limit: '1mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// Static: index.html + sw.js không cache (luôn lấy bản mới),
+// file còn lại revalidate mỗi lần mở (304 nếu không đổi → nhanh mà không dính bản cũ)
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('sw.js') || filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-store');
+    } else {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  },
+}));
 
 app.use('/api/auth', require('./routes/auth'));
 app.get('/api/health', (req, res) => res.json({ ok: true, time: Date.now() }));
@@ -21,6 +31,7 @@ app.use('/api', require('./routes/api'));
 
 // SPA fallback
 app.use((req, res) => {
+  res.set('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
