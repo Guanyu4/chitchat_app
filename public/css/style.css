@@ -649,6 +649,14 @@ html.dark .rec-indicator { background: linear-gradient(135deg, #3A1D24, #2A1418)
   font-size: 13px; font-weight: 500; padding: 7px 16px; border-radius: 16px; margin: 10px 0;
   border: 1px solid var(--border);
 }
+/* Tin nhắn hệ thống (đổi nền chung...) */
+.sys-log {
+  align-self: center; background: linear-gradient(135deg, rgba(0, 132, 255, .12), rgba(124, 92, 255, .12));
+  color: var(--text); border: 1px solid var(--border);
+  font-size: 13px; font-weight: 500; padding: 8px 18px; border-radius: 18px; margin: 10px 0;
+  text-align: center; max-width: 85%; box-shadow: var(--shadow-sm);
+}
+.sys-log b { font-weight: 700; }
 .msg-row.flash .bubble { animation: flash 1.6s ease; }
 @keyframes flash {
   0%, 60% { box-shadow: 0 0 0 3px var(--blue); }

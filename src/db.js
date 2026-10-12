@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id);
 CREATE INDEX IF NOT EXISTS idx_members_user ON conversation_members(user_id);
 `);
+  // Migration: cột wallpaper chung cho conversations (bỏ qua nếu đã có)
+  try { await db.execute(`ALTER TABLE conversations ADD COLUMN wallpaper TEXT`); } catch { /* đã tồn tại */ }
   // Migration: cột muted / archived / wallpaper / quick_emoji / theme_color cho conversation_members (bỏ qua nếu đã có)
   for (const col of ['muted INTEGER NOT NULL DEFAULT 0', 'archived INTEGER NOT NULL DEFAULT 0', 'wallpaper TEXT', `quick_emoji TEXT DEFAULT '👍'`, 'theme_color TEXT']) {
     try { await db.execute(`ALTER TABLE conversation_members ADD COLUMN ${col}`); } catch { /* đã tồn tại */ }
@@ -172,7 +174,7 @@ async function getConversationsForUser(uid, onlyArchived = false) {
   const rs = await q(
     `SELECT c.id, c.type, c.name, c.created_at, cm.muted AS muted, cm.archived AS archived,
       cm.wallpaper AS wallpaper, COALESCE(cm.quick_emoji, '👍') AS quick_emoji,
-      cm.theme_color AS theme_color,
+      cm.theme_color AS theme_color, c.wallpaper AS shared_wallpaper,
       (SELECT m.content FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_content,
       (SELECT m.type FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_type,
       (SELECT m.sender_id FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_sender_id,
@@ -315,6 +317,11 @@ async function setQuickEmoji(conversationId, userId, emoji) {
   );
 }
 
+// Hình nền chung của đoạn chat (cả 2 cùng thấy)
+async function setSharedWallpaper(conversationId, wallpaper) {
+  await q(`UPDATE conversations SET wallpaper = ? WHERE id = ?`, [wallpaper || null, conversationId]);
+}
+
 // Màu bong bóng chat (riêng từng người)
 async function setThemeColor(conversationId, userId, color) {
   await q(
@@ -363,5 +370,5 @@ module.exports = {
   isMember, memberIdsOf, createMessage, getMessages,
   markConversationSeen, markDelivered, getJwtSecret,
   setMuted, setArchived, unarchiveOnMessage, getMedia, searchMessages,
-  setWallpaper, setQuickEmoji, setThemeColor,
+  setWallpaper, setQuickEmoji, setThemeColor, setSharedWallpaper,
 };

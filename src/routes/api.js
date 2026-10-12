@@ -7,9 +7,10 @@ const {
   searchUsers, getContacts, getUserById, updateAvatar, getConversationsForUser, getOrCreatePrivateConversation,
   createConversation, getMessages, isMember,
   markConversationSeen, setMuted, setArchived, getMedia, searchMessages, setWallpaper,
-  setQuickEmoji, setThemeColor,
+  setQuickEmoji, setThemeColor, setSharedWallpaper, createMessage,
 } = require('../db');
 const { authMiddleware, rateLimit } = require('../middleware');
+const { emitToConversation } = require('../socket');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -135,6 +136,27 @@ router.post('/conversations/:id/theme', async (req, res) => {
     return res.status(400).json({ error: 'Màu không hợp lệ.' });
   await setThemeColor(convId, req.user.id, color);
   res.json({ ok: true, color });
+});
+
+// Đổi / xóa HÌNH NỀN CHUNG của đoạn chat (cả 2 cùng thấy) + tin nhắn hệ thống thông báo
+router.post('/conversations/:id/wallpaper-shared', async (req, res) => {
+  const convId = Number(req.params.id);
+  if (!(await isMember(convId, req.user.id)))
+    return res.status(403).json({ error: 'Bạn không thuộc cuộc trò chuyện này.' });
+  const wallpaper = (req.body?.wallpaper || '').trim() || null;
+  if (wallpaper && !wallpaper.startsWith('/uploads/') && !/^https?:\/\//.test(wallpaper))
+    return res.status(400).json({ error: 'Hình nền không hợp lệ.' });
+  await setSharedWallpaper(convId, wallpaper);
+  // Tin nhắn hệ thống: ai đổi/xóa nền chung
+  const sysContent = JSON.stringify({
+    kind: 'wallpaper_shared',
+    wallpaper,
+    by_id: req.user.id,
+    by_name: req.user.name,
+  });
+  const msg = await createMessage(convId, req.user.id, sysContent, 'system');
+  await emitToConversation(req.app.get('io'), convId, 'message:new', { ...msg, status: 'sent' });
+  res.json({ ok: true, wallpaper });
 });
 
 // File phương tiện đã chia sẻ

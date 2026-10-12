@@ -297,6 +297,26 @@ const sendAndWait = (socket, payload) =>
       ok('Chặn màu theme không hợp lệ', bad.status === 400);
     }
 
+    // 11k. Hình nền chung (cả 2 cùng thấy) + tin nhắn hệ thống real-time
+    {
+      const sysP = waitFor(sockB, 'message:new');
+      const r = await api(`/api/conversations/${conversationId}/wallpaper-shared`, a.token, {
+        method: 'POST', body: JSON.stringify({ wallpaper: 'https://example.com/bg.png' }),
+      });
+      const { conversations } = await api('/api/conversations', a.token);
+      const c = conversations.find((x) => x.id === conversationId);
+      ok('Đổi hình nền chung',
+        r.wallpaper === 'https://example.com/bg.png' && c.shared_wallpaper === 'https://example.com/bg.png');
+      const sysMsg = await sysP;
+      const info = JSON.parse(sysMsg.content);
+      ok('Real-time tin nhắn hệ thống đổi nền chung',
+        sysMsg.type === 'system' && info.kind === 'wallpaper_shared' &&
+        info.wallpaper === 'https://example.com/bg.png' && info.by_name === a.user.name);
+      await api(`/api/conversations/${conversationId}/wallpaper-shared`, a.token, {
+        method: 'POST', body: JSON.stringify({ wallpaper: null }),
+      });
+    }
+
     // 12. Offline: B disconnect → A nhận user:offline (lọc đúng userId, bỏ qua event của C)
     const offP = new Promise((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('timeout chờ user:offline')), 8000);

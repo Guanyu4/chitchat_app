@@ -55,7 +55,7 @@ function initSocket(io) {
     }
 
     // --- gửi tin nhắn ---
-    const MSG_TYPES = ['text', 'image', 'audio', 'call'];
+    const MSG_TYPES = ['text', 'image', 'audio', 'call', 'system'];
     socket.on('message:send', async (payload, ack) => {
       try {
         let { conversationId, content, type = 'text', clientId } = payload || {};
@@ -200,4 +200,15 @@ function initSocket(io) {
   });
 }
 
-module.exports = { initSocket, isOnline };
+module.exports = { initSocket, isOnline, emitToConversation };
+
+// Đảm bảo mọi member đang online đã join room rồi emit — dùng cho API route
+// tạo tin nhắn hệ thống (không qua socket của user)
+async function emitToConversation(io, convId, event, data) {
+  const memberIds = await memberIdsOf(convId);
+  for (const memberId of memberIds) {
+    const sids = onlineSockets.get(memberId);
+    if (sids) for (const sid of sids) io.sockets.sockets.get(sid)?.join(`conv:${convId}`);
+  }
+  io.to(`conv:${convId}`).emit(event, data);
+}

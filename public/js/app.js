@@ -294,9 +294,10 @@ function applyTheme(conv) {
 }
 
 /* ---------- Hình nền đoạn chat ---------- */
+// Ưu tiên nền chung (cả 2 thấy) → rồi đến nền riêng
 function applyWallpaper(conv) {
   const box = $('#messages');
-  const wp = conv?.wallpaper || null;
+  const wp = conv?.shared_wallpaper || conv?.wallpaper || null;
   if (wp) {
     box.classList.add('has-wallpaper');
     box.style.backgroundImage = `url("${wp}")`;
@@ -305,8 +306,11 @@ function applyWallpaper(conv) {
     box.style.backgroundImage = '';
   }
   const prev = $('#wallpaper-preview');
-  if (prev) prev.style.backgroundImage = wp ? `url("${wp}")` : '';
-  $('#btn-wallpaper-remove')?.classList.toggle('hidden', !wp);
+  if (prev) prev.style.backgroundImage = conv?.wallpaper ? `url("${conv.wallpaper}")` : '';
+  $('#btn-wallpaper-remove')?.classList.toggle('hidden', !conv?.wallpaper);
+  const sprev = $('#shared-wallpaper-preview');
+  if (sprev) sprev.style.backgroundImage = conv?.shared_wallpaper ? `url("${conv.shared_wallpaper}")` : '';
+  $('#btn-shared-wallpaper-remove')?.classList.toggle('hidden', !conv?.shared_wallpaper);
 }
 
 $('#btn-wallpaper').onclick = () => $('#wallpaper-input').click();
@@ -346,6 +350,50 @@ $('#btn-wallpaper-remove').onclick = async () => {
     conv.wallpaper = null;
     applyWallpaper(conv);
     toast('Đã xóa hình nền.');
+  } catch (err) { toast(err.message); }
+};
+
+/* ---------- Hình nền CHUNG (cả 2 cùng thấy) ---------- */
+async function uploadImageFile(file) {
+  if (!file.type.startsWith('image/')) throw new Error('Phải là file ảnh.');
+  if (file.size > 10 * 1024 * 1024) throw new Error('Ảnh tối đa 10MB.');
+  const fd = new FormData();
+  fd.append('file', file);
+  const up = await fetch('/api/upload', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${state.token}` },
+    body: fd,
+  });
+  const upData = await up.json();
+  if (!up.ok) throw new Error(upData.error || 'Upload thất bại');
+  return upData.url;
+}
+$('#btn-shared-wallpaper').onclick = () => $('#shared-wallpaper-input').click();
+$('#shared-wallpaper-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  const conv = getActiveConv();
+  if (!file || !conv) return;
+  try {
+    toast('Đang tải hình nền chung lên...');
+    const url = await uploadImageFile(file);
+    await api(`/api/conversations/${conv.id}/wallpaper-shared`, {
+      method: 'POST', body: JSON.stringify({ wallpaper: url }),
+    });
+    // Tin nhắn hệ thống sẽ về qua socket và tự cập nhật; cập nhật ngay cho mượt
+    conv.shared_wallpaper = url;
+    applyWallpaper(conv);
+  } catch (err) { toast(err.message); }
+});
+$('#btn-shared-wallpaper-remove').onclick = async () => {
+  const conv = getActiveConv();
+  if (!conv) return;
+  try {
+    await api(`/api/conversations/${conv.id}/wallpaper-shared`, {
+      method: 'POST', body: JSON.stringify({ wallpaper: null }),
+    });
+    conv.shared_wallpaper = null;
+    applyWallpaper(conv);
   } catch (err) { toast(err.message); }
 };
 
@@ -865,6 +913,7 @@ function renderConvList(filter = '') {
       ? (c.last_type === 'image' ? '📷 Đã gửi một ảnh'
         : c.last_type === 'audio' ? '🎤 Tin nhắn thoại'
         : c.last_type === 'call' ? '📞 Cuộc gọi'
+        : c.last_type === 'system' ? sysPreview({ content: c.last_content })
         : likeDisplay(c.last_content))
       : 'Bắt đầu cuộc trò chuyện';
     const prefix = c.last_sender_id === state.user.id ? 'Bạn: ' : '';
@@ -1015,6 +1064,25 @@ function callLogHTML(msg) {
   return `<div class="call-log" data-id="${msg.id}">${icon} ${label}${dur}</div>`;
 }
 
+// Tin nhắn hệ thống (VD: đổi hình nền chung) — parse nội dung JSON
+function sysInfo(msg) {
+  try { return JSON.parse(msg.content); } catch { return {}; }
+}
+function sysLogHTML(msg) {
+  const info = sysInfo(msg);
+  if (info.kind === 'wallpaper_shared') {
+    const label = info.wallpaper ? '🎨 đã đổi hình nền chung của đoạn chat' : '🗑️ đã xóa hình nền chung của đoạn chat';
+    return `<div class="sys-log" data-id="${msg.id}"><b>${esc(info.by_name || '')}</b> ${label}</div>`;
+  }
+  return `<div class="sys-log" data-id="${msg.id}">${esc(msg.content)}</div>`;
+}
+function sysPreview(msg) {
+  const info = sysInfo(msg);
+  if (info.kind === 'wallpaper_shared')
+    return `🎨 ${info.by_name || 'Ai đó'} ${info.wallpaper ? 'đã đổi hình nền chung' : 'đã xóa hình nền chung'}`;
+  return '🔔 Thông báo hệ thống';
+}
+
 function ticksHTML(status) {
   if (status === 'seen') return `<div class="ticks seen" title="Đã xem">✓✓</div>`;
   if (status === 'delivered') return `<div class="ticks delivered" title="Đã nhận">✓✓</div>`;
@@ -1023,6 +1091,7 @@ function ticksHTML(status) {
 
 function msgRowHTML(msg, prevMsg) {
   if (msg.type === 'call') return callLogHTML(msg);
+  if (msg.type === 'system') return sysLogHTML(msg);
   const mine = msg.sender_id === state.user.id;
   const grouped = prevMsg && prevMsg.sender_id === msg.sender_id &&
     (msg.created_at - prevMsg.created_at) < 120_000;
@@ -1436,6 +1505,14 @@ function connectSocket() {
   socket.on('message:new', (msg) => {
     const conv = getConv(msg.conversation_id);
     if (conv && conv.archived && msg.sender_id !== state.user.id) conv.archived = 0; // tự bỏ lưu trữ khi có tin mới
+    // Tin nhắn hệ thống đổi nền chung → cập nhật nền ngay lập tức
+    if (conv && msg.type === 'system') {
+      const info = sysInfo(msg);
+      if (info.kind === 'wallpaper_shared') {
+        conv.shared_wallpaper = info.wallpaper || null;
+        if (msg.conversation_id === state.activeConvId) applyWallpaper(conv);
+      }
+    }
     if (msg.conversation_id === state.activeConvId) {
       appendMessage(msg);
       markSeen();
