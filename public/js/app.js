@@ -878,8 +878,10 @@ $('#avatar-input').addEventListener('change', async (e) => {
 function setThemeMode(dark) {
   document.documentElement.classList.toggle('dark', dark);
   try { localStorage.setItem('chitchat_dark', dark ? '1' : '0'); } catch (e) {}
-  const btn = $('#btn-theme');
-  if (btn) btn.textContent = dark ? '☀️' : '🌙';
+  const icon = $('#theme-icon');
+  const label = $('#theme-label');
+  if (icon) icon.textContent = dark ? '☀️' : '🌙';
+  if (label) label.textContent = dark ? 'Chế độ sáng' : 'Chế độ tối';
 }
 function initThemeMode() {
   let dark = false;
@@ -891,6 +893,23 @@ function initThemeMode() {
     toast(nowDark ? 'Đã bật chế độ tối 🌙' : 'Đã bật chế độ sáng ☀️');
   };
 }
+
+/* ---------- Menu Cài đặt (góc trái dưới) ---------- */
+$('#btn-settings').onclick = (e) => {
+  e.stopPropagation();
+  $('#settings-menu').classList.toggle('hidden');
+};
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#settings-menu') && !e.target.closest('#btn-settings')) {
+    $('#settings-menu').classList.add('hidden');
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') $('#settings-menu').classList.add('hidden');
+});
+$('#settings-menu').addEventListener('click', () => {
+  $('#settings-menu').classList.add('hidden'); // chọn xong tự đóng
+});
 
 /* ---------- Sidebar: danh sách hội thoại ---------- */
 function convPeer(conv) {

@@ -57,13 +57,6 @@
           <div class="me-status">Đang hoạt động</div>
         </div>
       </div>
-      <div class="sidebar-actions">
-        <button id="btn-new-chat" class="icon-btn" title="Tin nhắn mới">✎</button>
-        <button id="btn-archive-view" class="icon-btn" title="Đoạn chat đã lưu trữ">🗃️</button>
-        <button id="btn-theme" class="icon-btn" title="Chế độ tối/sáng">🌙</button>
-        <button id="btn-help" class="icon-btn" title="Trợ giúp">?</button>
-        <button id="btn-logout" class="icon-btn" title="Đăng xuất">⏻</button>
-      </div>
     </div>
     <div id="archived-banner" class="archived-banner hidden">
       📦 Đoạn chat đã lưu trữ
@@ -80,6 +73,19 @@
     <div id="conv-list" class="conv-list"></div>
     <div id="user-results" class="user-results hidden"></div>
     <div id="contacts-list-mobile" class="contacts-list contacts-list-mobile"></div>
+    <div class="sidebar-footer">
+      <button id="btn-settings" class="settings-btn" title="Cài đặt">
+        <span class="settings-gear">⚙️</span><span>Cài đặt</span>
+      </button>
+      <div id="settings-menu" class="settings-menu hidden">
+        <button id="btn-new-chat" class="settings-item"><span class="si">✎</span><span>Tin nhắn mới</span></button>
+        <button id="btn-archive-view" class="settings-item"><span class="si">🗃️</span><span>Đoạn chat đã lưu trữ</span></button>
+        <button id="btn-theme" class="settings-item"><span class="si" id="theme-icon">🌙</span><span id="theme-label">Chế độ tối</span></button>
+        <button id="btn-help" class="settings-item"><span class="si">❓</span><span>Trợ giúp</span></button>
+        <div class="settings-sep"></div>
+        <button id="btn-logout" class="settings-item danger"><span class="si">🚪</span><span>Đăng xuất</span></button>
+      </div>
+    </div>
   </aside>
 
   <!-- Khung chat -->
